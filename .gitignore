@@ -1,0 +1,13 @@
+# Newhorse
+
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+*.db
+venv/
+.venv/
+data/
+*.log
+.DS_Store

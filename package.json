@@ -1,0 +1,27 @@
+{
+  "name": "newhorse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Agent Development Platform based on Claude Agent SDK",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run ensure:env && npm run ensure:venv && concurrently --raw \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "node scripts/run-api.js",
+    "dev:web": "node scripts/run-web.js",
+    "ensure:env": "node scripts/setup-env.js",
+    "ensure:venv": "node scripts/setup-venv.js",
+    "setup": "npm install",
+    "new:agent": "node scripts/new-agent.js",
+    "new:skill": "node scripts/new-skill.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
