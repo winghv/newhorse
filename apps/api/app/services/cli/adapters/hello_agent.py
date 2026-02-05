@@ -83,6 +83,9 @@ class HelloAgent(BaseCLI):
             # Model to use
             model=cli_model,
 
+            # Enable file operation tools
+            allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+
             # Additional directories to include (for skills if they exist)
             add_dirs=[skills_dir] if os.path.exists(skills_dir) else [],
 
