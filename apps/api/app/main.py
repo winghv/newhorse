@@ -51,6 +51,14 @@ async def on_startup():
     """Application startup handler."""
     ui.info("Initializing Newhorse API", "Startup")
 
+    # Ensure data directory exists for SQLite database
+    if "sqlite" in settings.database_url:
+        db_path = settings.database_url.replace("sqlite:///", "")
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+            ui.success(f"Database directory: {db_dir}", "Startup")
+
     # Create database tables
     Base.metadata.create_all(bind=engine)
     ui.success("Database initialized", "Startup")

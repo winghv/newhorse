@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowLeft, Send, Bot, User, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -17,8 +17,8 @@ interface Message {
   created_at?: string;
 }
 
-export default function ChatPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = use(params);
+export default function ChatPage({ params }: { params: { projectId: string } }) {
+  const { projectId } = params;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);

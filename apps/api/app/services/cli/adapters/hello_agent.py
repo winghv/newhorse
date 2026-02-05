@@ -83,18 +83,18 @@ class HelloAgent(BaseCLI):
             # Model to use
             model=cli_model,
 
-            # Skills directories (agents can use skills defined here)
-            skillsDirectories=[skills_dir] if os.path.exists(skills_dir) else [],
+            # Additional directories to include (for skills if they exist)
+            add_dirs=[skills_dir] if os.path.exists(skills_dir) else [],
 
             # MCP servers (uncomment and configure as needed)
-            # mcpServers={
+            # mcp_servers={
             #     "your-mcp-server": {
             #         "url": "http://localhost:8086/mcp"
             #     }
             # },
 
             # Session resumption
-            session_id=claude_session_id if not force_new_session else None,
+            resume=claude_session_id if not force_new_session else None,
         )
 
         return options
