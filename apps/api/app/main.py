@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import projects_router, chat_router, agents_router
+from app.api import projects_router, chat_router, agents_router, files_router
 from app.core import settings, configure_logging, ui
 from app.db import Base, engine
 
@@ -38,6 +38,7 @@ app.add_middleware(
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
+app.include_router(files_router, prefix="/api/projects", tags=["files"])
 
 
 @app.get("/health")
@@ -50,6 +51,14 @@ def health():
 async def on_startup():
     """Application startup handler."""
     ui.info("Initializing Newhorse API", "Startup")
+
+    # Ensure data directory exists for SQLite database
+    if "sqlite" in settings.database_url:
+        db_path = settings.database_url.replace("sqlite:///", "")
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+            ui.success(f"Database directory: {db_dir}", "Startup")
 
     # Create database tables
     Base.metadata.create_all(bind=engine)
