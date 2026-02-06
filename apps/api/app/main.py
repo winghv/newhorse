@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import projects_router, chat_router, agents_router
+from app.api import projects_router, chat_router, agents_router, preview_router
 from app.core import settings, configure_logging, ui
 from app.db import Base, engine
 
@@ -38,6 +38,7 @@ app.add_middleware(
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
+app.include_router(preview_router, prefix="/api/preview", tags=["preview"])
 
 
 @app.get("/health")
