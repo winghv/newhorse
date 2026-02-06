@@ -17,8 +17,10 @@
     "new:skill": "node scripts/new-skill.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.1",
     "concurrently": "^8.2.2",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "playwright": "^1.58.1"
   },
   "engines": {
     "node": ">=18.0.0",
