@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, MessageSquare, Trash2, Bot } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, MessageSquare, Trash2, Bot, Sparkles, ChevronDown, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface Project {
@@ -14,14 +15,26 @@ interface Project {
   created_at: string;
 }
 
+interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export default function Home() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+  const [useAiGeneration, setUseAiGeneration] = useState(false);
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
 
   useEffect(() => {
     fetchProjects();
+    fetchTemplates();
   }, []);
 
   const fetchProjects = async () => {
@@ -36,10 +49,23 @@ export default function Home() {
     }
   };
 
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch("/api/agents/templates");
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error("Failed to load templates:", error);
+    }
+  };
+
   const createProject = async () => {
     if (!newProjectName.trim()) return;
 
     try {
+      // Create project
       const res = await fetch("/api/projects/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,10 +74,29 @@ export default function Home() {
 
       if (res.ok) {
         const project = await res.json();
+
+        // Apply template if selected
+        if (selectedTemplate && !useAiGeneration) {
+          await fetch(`/api/agents/projects/${project.id}/config/from-template?template_id=${selectedTemplate}`, {
+            method: "POST",
+          });
+        }
+
         setProjects([project, ...projects]);
         setNewProjectName("");
+        setSelectedTemplate("");
+        setUseAiGeneration(false);
         setShowNewProject(false);
         toast.success("Project created");
+
+        // If AI generation selected, redirect to chat with system-agent
+        if (useAiGeneration) {
+          // Apply system-agent template first
+          await fetch(`/api/agents/projects/${project.id}/config/from-template?template_id=system-agent`, {
+            method: "POST",
+          });
+          router.push(`/chat/${project.id}`);
+        }
       }
     } catch (error) {
       toast.error("Failed to create project");
@@ -70,6 +115,18 @@ export default function Home() {
     } catch (error) {
       toast.error("Failed to delete project");
     }
+  };
+
+  const selectTemplate = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    setUseAiGeneration(false);
+    setShowTemplateDropdown(false);
+  };
+
+  const selectAiGeneration = () => {
+    setUseAiGeneration(true);
+    setSelectedTemplate("");
+    setShowTemplateDropdown(false);
   };
 
   return (
@@ -102,17 +159,99 @@ export default function Home() {
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && createProject()}
             />
+
+            {/* Agent Template Selection */}
+            <div className="mb-3">
+              <label className="block text-sm text-zinc-400 mb-2">Agent 模板</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg hover:border-zinc-600 transition text-left"
+                >
+                  <span className="flex items-center gap-2">
+                    {useAiGeneration ? (
+                      <>
+                        <Sparkles className="w-4 h-4 text-yellow-500" />
+                        让 AI 帮我创建 Agent
+                      </>
+                    ) : selectedTemplate ? (
+                      <>
+                        <Bot className="w-4 h-4 text-blue-500" />
+                        {templates.find((t) => t.id === selectedTemplate)?.name || selectedTemplate}
+                      </>
+                    ) : (
+                      <span className="text-zinc-500">选择模板（可选）</span>
+                    )}
+                  </span>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+
+                {showTemplateDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg overflow-hidden">
+                    {/* AI Generation Option */}
+                    <button
+                      type="button"
+                      onClick={selectAiGeneration}
+                      className="w-full px-3 py-2 text-left hover:bg-zinc-700 transition flex items-center justify-between border-b border-zinc-700"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-yellow-500" />
+                        <div>
+                          <div className="font-medium">让 AI 帮我创建 Agent</div>
+                          <div className="text-xs text-zinc-500">描述你的需求，AI 自动生成配置</div>
+                        </div>
+                      </div>
+                      {useAiGeneration && <Check className="w-4 h-4 text-green-500" />}
+                    </button>
+
+                    {/* Template Options */}
+                    {templates.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => selectTemplate(template.id)}
+                        className="w-full px-3 py-2 text-left hover:bg-zinc-700 transition flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-medium">{template.name}</div>
+                          <div className="text-xs text-zinc-500">{template.description}</div>
+                        </div>
+                        {selectedTemplate === template.id && <Check className="w-4 h-4 text-green-500" />}
+                      </button>
+                    ))}
+
+                    {/* No template option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTemplate("");
+                        setUseAiGeneration(false);
+                        setShowTemplateDropdown(false);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-zinc-700 transition text-zinc-400"
+                    >
+                      不使用模板
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={createProject}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2"
               >
+                {useAiGeneration && <Sparkles className="w-4 h-4" />}
                 Create
               </button>
               <button
                 onClick={() => {
                   setShowNewProject(false);
                   setNewProjectName("");
+                  setSelectedTemplate("");
+                  setUseAiGeneration(false);
                 }}
                 className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg"
               >
