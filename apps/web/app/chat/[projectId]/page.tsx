@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, Bot, User, Loader2, PanelLeftClose, PanelLeft } from "lucide-react";
+import { ArrowLeft, Send, Bot, User, Loader2, PanelLeftClose, PanelLeft, Settings, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { FileTree } from "@/components/FileTree";
+import { AgentConfig } from "@/components/AgentConfig";
 
 interface Message {
   id: string;
@@ -25,12 +26,14 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(true);
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Connect WebSocket
-    const ws = new WebSocket(`ws://localhost:8080/api/chat/${projectId}`);
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/chat/${projectId}`);
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -114,22 +117,33 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         </button>
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-blue-500" />
-          <span className="font-medium">Project: {projectId}</span>
+          <span className="font-medium truncate">Project: {projectId}</span>
         </div>
-        <div
-          className={`ml-auto px-2 py-1 text-xs rounded ${
-            isConnected ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"
-          }`}
-        >
-          {isConnected ? "Connected" : "Disconnected"}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowConfigPanel(!showConfigPanel)}
+            className={`p-2 rounded-lg transition ${
+              showConfigPanel ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
+            }`}
+            title="Agent 配置"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <div
+            className={`px-2 py-1 text-xs rounded ${
+              isConnected ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"
+            }`}
+          >
+            {isConnected ? "Connected" : "Disconnected"}
+          </div>
         </div>
       </header>
 
       {/* Main content area with file panel and chat */}
       <div className="flex flex-1 min-h-0">
-        {/* File Panel */}
+        {/* File Panel - hidden on mobile by default */}
         {showFilePanel && (
-          <div className="w-80 border-r border-zinc-800 bg-zinc-900/50">
+          <div className="hidden md:block w-80 border-r border-zinc-800 bg-zinc-900/50 flex-shrink-0">
             <FileTree projectId={projectId} />
           </div>
         )}
@@ -241,6 +255,24 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
             </div>
           </div>
         </div>
+
+        {/* Agent Config Panel */}
+        {showConfigPanel && (
+          <div className="w-80 md:w-96 border-l border-zinc-800 bg-zinc-900/50 flex-shrink-0 flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+              <h3 className="font-medium text-sm">Agent 配置</h3>
+              <button
+                onClick={() => setShowConfigPanel(false)}
+                className="p-1 hover:bg-zinc-800 rounded transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <AgentConfig projectId={projectId} className="" />
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
