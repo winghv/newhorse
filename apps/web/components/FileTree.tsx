@@ -12,7 +12,9 @@ import {
   ChevronDown,
   RefreshCw,
   X,
+  Eye,
 } from "lucide-react";
+import { FilePreview, isPreviewable } from "./FilePreview";
 
 interface FileNode {
   name: string;
@@ -60,9 +62,12 @@ function getFileIcon(filename: string) {
       return <FileText className="w-4 h-4 text-zinc-400" />;
     case "html":
     case "htm":
+      return <FileCode className="w-4 h-4 text-orange-400" />;
     case "css":
     case "scss":
-      return <FileCode className="w-4 h-4 text-orange-400" />;
+      return <FileCode className="w-4 h-4 text-pink-400" />;
+    case "svg":
+      return <Eye className="w-4 h-4 text-green-400" />;
     default:
       return <File className="w-4 h-4 text-zinc-500" />;
   }
@@ -96,14 +101,19 @@ function FileContentViewer({ path, content, onClose }: FileContentViewerProps) {
 
 function TreeNode({
   node,
+  projectId,
   onSelect,
+  onPreview,
   level = 0,
 }: {
   node: FileNode;
+  projectId: string;
   onSelect: (path: string) => void;
+  onPreview: (path: string) => void;
   level?: number;
 }) {
   const [isOpen, setIsOpen] = useState(level < 2);
+  const canPreview = node.type === "file" && isPreviewable(node.name);
 
   const handleClick = () => {
     if (node.type === "directory") {
@@ -113,10 +123,15 @@ function TreeNode({
     }
   };
 
+  const handlePreviewClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onPreview(node.path);
+  };
+
   return (
     <div>
       <div
-        className="flex items-center gap-1 py-1 px-2 hover:bg-zinc-800 cursor-pointer rounded text-sm"
+        className="flex items-center gap-1 py-1 px-2 hover:bg-zinc-800 cursor-pointer rounded text-sm group"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
       >
@@ -139,7 +154,18 @@ function TreeNode({
             {getFileIcon(node.name)}
           </>
         )}
-        <span className="ml-1 truncate">{node.name}</span>
+        <span className="ml-1 truncate flex-1">{node.name}</span>
+
+        {/* Preview button for previewable files */}
+        {canPreview && (
+          <button
+            onClick={handlePreviewClick}
+            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-600 rounded transition"
+            title="Preview"
+          >
+            <Eye className="w-3.5 h-3.5 text-green-400" />
+          </button>
+        )}
       </div>
 
       {node.type === "directory" && isOpen && node.children && (
@@ -148,7 +174,9 @@ function TreeNode({
             <TreeNode
               key={child.path}
               node={child}
+              projectId={projectId}
               onSelect={onSelect}
+              onPreview={onPreview}
               level={level + 1}
             />
           ))}
@@ -166,6 +194,7 @@ export function FileTree({ projectId, onFileSelect, className }: FileTreeProps) 
     path: string;
     content: string;
   } | null>(null);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
 
   const fetchTree = useCallback(async () => {
     try {
@@ -193,15 +222,28 @@ export function FileTree({ projectId, onFileSelect, className }: FileTreeProps) 
   }, [fetchTree]);
 
   const handleFileSelect = async (path: string) => {
+    // If it's previewable, show preview instead
+    if (isPreviewable(path)) {
+      setPreviewFile(path);
+      setSelectedFile(null);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/projects/${projectId}/files/${path}`);
       if (!res.ok) throw new Error("Failed to fetch file");
       const data = await res.json();
       setSelectedFile({ path, content: data.content });
+      setPreviewFile(null);
       onFileSelect?.(path, data.content);
     } catch (err) {
       console.error("Error loading file:", err);
     }
+  };
+
+  const handlePreview = (path: string) => {
+    setPreviewFile(path);
+    setSelectedFile(null);
   };
 
   if (loading) {
@@ -244,23 +286,29 @@ export function FileTree({ projectId, onFileSelect, className }: FileTreeProps) 
         {/* File tree */}
         <div className="w-48 overflow-y-auto border-r border-zinc-700 py-2">
           {tree.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-zinc-500">
-              No files yet
-            </div>
+            <div className="px-3 py-2 text-sm text-zinc-500">No files yet</div>
           ) : (
             tree.map((node) => (
               <TreeNode
                 key={node.path}
                 node={node}
+                projectId={projectId}
                 onSelect={handleFileSelect}
+                onPreview={handlePreview}
               />
             ))
           )}
         </div>
 
-        {/* File content viewer */}
+        {/* Content viewer / Preview */}
         <div className="flex-1 min-w-0">
-          {selectedFile ? (
+          {previewFile ? (
+            <FilePreview
+              projectId={projectId}
+              filePath={previewFile}
+              onClose={() => setPreviewFile(null)}
+            />
+          ) : selectedFile ? (
             <FileContentViewer
               path={selectedFile.path}
               content={selectedFile.content}
