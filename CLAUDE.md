@@ -1,76 +1,68 @@
 # CLAUDE.md
 
-This file provides guidance for Claude Code working in this repository.
+Newhorse — 基于 Claude Agent SDK 的 AI Agent 开发平台。
 
-## Project Overview
-
-Newhorse is an AI Agent Development Platform based on Claude Agent SDK. It provides a framework for building custom AI agents with specialized capabilities.
-
-## Architecture
+## 架构
 
 ```
-newhorse/
-├── apps/
-│   ├── api/                    # FastAPI backend
-│   │   └── app/
-│   │       ├── api/            # API routes
-│   │       ├── core/           # Config, logging
-│   │       ├── models/         # Database models
-│   │       └── services/cli/   # Agent implementations
-│   └── web/                    # Next.js frontend
-├── extensions/
-│   └── skills/                 # Agent skills
-└── scripts/                    # Dev tools
+apps/api/    → FastAPI 后端，SQLAlchemy + SQLite
+apps/web/    → Next.js 14 (App Router) + Tailwind CSS
+extensions/skills/  → Agent 技能扩展
+scripts/     → Node.js 开发脚本
 ```
 
-## Key Components
-
-### Agent System
-
-- **BaseCLI** (`apps/api/app/services/cli/base.py`): Abstract base class for agents
-- **AgentManager** (`apps/api/app/services/cli/manager.py`): Manages agent lifecycle
-- **Adapters** (`apps/api/app/services/cli/adapters/`): Individual agent implementations
-
-### Skills System
-
-- Skills are in `extensions/skills/`
-- Each skill has a `SKILL.md` with YAML frontmatter
-- Skills can include `scripts/` and `references/`
-
-## Development Commands
+## 命令
 
 ```bash
-npm run dev          # Start full environment
-npm run dev:api      # Backend only
-npm run dev:web      # Frontend only
-npm run new:agent    # Create agent template
-npm run new:skill    # Create skill template
+npm run dev          # API + Web 同时启动
+npm run dev:api      # 仅后端
+npm run dev:web      # 仅前端
+npm run new:agent    # 创建 Agent（需手动注册到 types.py + manager.py）
+npm run new:skill    # 创建 Skill
 ```
 
-## Creating an Agent
+## 项目约定（不可从代码推断的决策）
 
-1. `npm run new:agent <name>`
-2. Add type to `app/common/types.py`
-3. Register in `app/services/cli/manager.py`
-4. Customize system prompt
+### 文件放置
 
-## Creating a Skill
+- API 路由: `apps/api/app/api/{resource}.py`，新路由必须在 `main.py` 注册
+- 数据模型: `apps/api/app/models/{entity}.py`，新模型必须在 `models/__init__.py` 导入
+- Agent 实现: `apps/api/app/services/cli/adapters/`，继承 `BaseCLI`
+- 共享类型: `apps/api/app/common/types.py` 集中管理枚举
+- `core/` 只放基础设施（配置、日志），不放业务逻辑
 
-1. `npm run new:skill <name>`
-2. Edit `SKILL.md` with frontmatter
-3. Add scripts/references as needed
+### 数据库
 
-## Code Style
+- 主键: `String` 类型，代码生成 8 位短 ID
+- 所有表必须有 `created_at`，可修改表加 `updated_at`
+- JSON 字段命名: `{name}_json`（如 `metadata_json`）
+- 新增字段必须有默认值（向后兼容）
 
-- Python: Follow PEP 8
-- TypeScript: Follow ESLint rules
-- Use type hints in Python
-- Prefer async/await for I/O operations
+### Agent 注册流程
 
-## Git Commits
+1. `npm run new:agent <name>` 生成模板
+2. `app/common/types.py` → AgentType 枚举加新值
+3. `app/services/cli/manager.py` → `_create_agent()` 加映射
+4. 模型使用 `BaseCLI.MODEL_MAP` 中已有映射
 
-Format: `feat/fix: concise description`
+### 前端
 
-Examples:
-- `feat: add code review agent`
-- `fix: websocket reconnection issue`
+- 暗色主题: zinc 色系为主，蓝色强调
+- API 调用走 Next.js rewrite 代理，用相对路径 `/api/...`
+- WebSocket 直连后端端口
+- Toast 用 sonner: `toast.error()` / `toast.success()`
+
+### 日志
+
+统一用 `app/core/terminal_ui.py` 的 `ui` 实例，格式: `ui.info("消息", "模块名")`
+
+## 红线
+
+- 不硬编码密钥/Token — 走 `.env` + `config.py`
+- 不写原始 SQL — 用 SQLAlchemy ORM
+- 新增环境变量必须同步更新 `.env.example`
+- 不引入功能重叠的依赖
+
+## Git
+
+格式: `类型: 描述`（feat/fix/refactor/chore），英文，一个 commit 一件事 , 不要出现 'Co-Authored-By'
