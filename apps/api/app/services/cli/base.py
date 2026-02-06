@@ -177,7 +177,7 @@ class BaseCLI(ABC):
                             elif isinstance(block, ToolUseBlock):
                                 tool_message = Message(
                                     id=str(uuid.uuid4()),
-                                    project_id=project_path,
+                                    project_id=project_id,
                                     role="assistant",
                                     message_type="tool_use",
                                     content=self._create_tool_summary(block.name, block.input),
@@ -196,7 +196,7 @@ class BaseCLI(ABC):
                     if content and content.strip():
                         yield Message(
                             id=str(uuid.uuid4()),
-                            project_id=project_path,
+                            project_id=project_id,
                             role="assistant",
                             message_type="chat",
                             content=content.strip(),
@@ -228,7 +228,7 @@ class BaseCLI(ABC):
 
                     yield Message(
                         id=str(uuid.uuid4()),
-                        project_id=project_path,
+                        project_id=project_id,
                         role="system",
                         message_type="session_complete",
                         content=result_content,

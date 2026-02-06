@@ -41,7 +41,7 @@ class AgentConfig:
             system_prompt=data.get("system_prompt", cls.system_prompt),
             skills=data.get("skills", []),
             model=data.get("model", cls.model),
-            allowed_tools=data.get("allowed_tools", cls.allowed_tools.__func__()),
+            allowed_tools=data.get("allowed_tools", ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]),
             config_source=source,
         )
 
