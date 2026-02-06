@@ -13,10 +13,11 @@ from app.common.types import AgentType
 from app.core.config import settings
 from app.core.terminal_ui import ui
 from ..base import BaseCLI, MODEL_MAPPING
+from ..config_loader import load_agent_config, AgentConfig
 
 
-# Default system prompt for the Hello Agent
-HELLO_AGENT_PROMPT = """You are a friendly and helpful AI assistant.
+# Default system prompt for the Hello Agent (fallback)
+DEFAULT_HELLO_PROMPT = """You are a friendly and helpful AI assistant.
 
 ## Your Capabilities
 - Answer questions clearly and concisely
@@ -63,19 +64,52 @@ class HelloAgent(BaseCLI):
 
         project_path = os.path.join(settings.projects_root, project_id)
 
-        # Resolve model
-        cli_model = MODEL_MAPPING.get(model, "claude-sonnet-4-5-20250929") if model else "claude-sonnet-4-5-20250929"
-
-        # Skills directory
-        skills_dir = os.path.join(settings.project_root, "extensions", "skills")
+        # Load agent configuration (project-level > global template > defaults)
+        default_config = AgentConfig(
+            name="Hello Agent",
+            description="A friendly AI assistant",
+            system_prompt=DEFAULT_HELLO_PROMPT,
+            model="claude-sonnet-4-5-20250929",
+            allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        )
+        config = load_agent_config(project_path, agent_type="hello", default_config=default_config)
 
         ui.info(f"Initializing Hello Agent for project: {project_id}", "HelloAgent")
-        ui.debug(f"Skills directory: {skills_dir}", "HelloAgent")
+        ui.debug(f"Config source: {config.config_source}", "HelloAgent")
+
+        # Resolve model (command parameter overrides config)
+        if model:
+            cli_model = MODEL_MAPPING.get(model, config.model)
+        else:
+            cli_model = MODEL_MAPPING.get(config.model, config.model)
+
         ui.debug(f"Model: {cli_model}", "HelloAgent")
 
+        # Build list of directories to include
+        add_dirs = []
+
+        # Global skills directory
+        global_skills_dir = os.path.join(settings.project_root, "extensions", "skills")
+        if os.path.exists(global_skills_dir):
+            add_dirs.append(global_skills_dir)
+
+        # Project-level skills directory
+        project_skills_dir = os.path.join(project_path, ".claude", "skills")
+        if os.path.exists(project_skills_dir):
+            add_dirs.append(project_skills_dir)
+
+        # Add skill directories from config
+        for skill in config.skills:
+            skill_dir = os.path.join(settings.project_root, "extensions", "skills", skill)
+            if os.path.exists(skill_dir) and skill_dir not in add_dirs:
+                add_dirs.append(skill_dir)
+
+        if add_dirs:
+            ui.debug(f"Skills directories: {add_dirs}", "HelloAgent")
+
         options = ClaudeAgentOptions(
-            # System prompt defines the agent's personality and capabilities
-            system_prompt=HELLO_AGENT_PROMPT,
+            # System prompt from config
+            system_prompt=config.system_prompt,
 
             # Working directory for the agent
             cwd=project_path,
@@ -83,18 +117,11 @@ class HelloAgent(BaseCLI):
             # Model to use
             model=cli_model,
 
-            # Enable file operation tools
-            allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+            # Enable file operation tools from config
+            allowed_tools=config.allowed_tools,
 
-            # Additional directories to include (for skills if they exist)
-            add_dirs=[skills_dir] if os.path.exists(skills_dir) else [],
-
-            # MCP servers (uncomment and configure as needed)
-            # mcp_servers={
-            #     "your-mcp-server": {
-            #         "url": "http://localhost:8086/mcp"
-            #     }
-            # },
+            # Additional directories to include (for skills)
+            add_dirs=add_dirs,
 
             # Session resumption
             resume=claude_session_id if not force_new_session else None,
