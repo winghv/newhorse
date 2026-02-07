@@ -43,6 +43,12 @@ class Settings(BaseModel):
         str(PROJECT_ROOT / "data" / "projects")
     )
 
+    # User-created agent templates
+    agents_root: str = os.getenv(
+        "AGENTS_ROOT",
+        str(PROJECT_ROOT / "data" / "agents")
+    )
+
     # Claude sessions path
     claude_sessions_root: str = os.getenv(
         "CLAUDE_SESSIONS_ROOT",

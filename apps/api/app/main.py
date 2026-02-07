@@ -69,6 +69,9 @@ async def on_startup():
     os.makedirs(settings.projects_root, exist_ok=True)
     ui.success(f"Projects root: {settings.projects_root}", "Startup")
 
+    os.makedirs(settings.agents_root, exist_ok=True)
+    ui.success(f"Agents root: {settings.agents_root}", "Startup")
+
     # Show ASCII logo
     ui.ascii_logo()
 

@@ -7,6 +7,7 @@ Loads agent configuration with priority:
 3. Code defaults
 """
 import os
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -74,8 +75,19 @@ def get_project_config_path(project_path: str) -> Path:
 
 
 def get_global_template_path(agent_type: str) -> Path:
-    """Get path to global agent template config."""
-    return Path(settings.project_root) / "extensions" / "agents" / agent_type / "agent.yaml"
+    """Get path to agent template config (checks builtin then user dirs)."""
+    # Check builtin first
+    builtin_path = Path(settings.project_root) / "extensions" / "agents" / agent_type / "agent.yaml"
+    if builtin_path.exists():
+        return builtin_path
+
+    # Then check user templates
+    user_path = Path(settings.agents_root) / agent_type / "agent.yaml"
+    if user_path.exists():
+        return user_path
+
+    # Return builtin path as default (even if doesn't exist)
+    return builtin_path
 
 
 def load_agent_config(
@@ -157,32 +169,73 @@ def save_project_config(project_path: str, config: AgentConfig) -> bool:
         return False
 
 
-def list_global_templates() -> List[Dict[str, Any]]:
-    """List all available global agent templates.
+def save_user_template(config: AgentConfig, template_id: Optional[str] = None) -> str:
+    """Save agent config as a user template.
+
+    Args:
+        config: AgentConfig to save
+        template_id: Optional ID, auto-generated if not provided
 
     Returns:
-        List of template info dictionaries with name, description, path
+        template_id
     """
-    templates_dir = Path(settings.project_root) / "extensions" / "agents"
+    if not template_id:
+        template_id = str(uuid.uuid4())[:8]
+
+    template_dir = Path(settings.agents_root) / template_id
+    template_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = template_dir / "agent.yaml"
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(
+            config.to_dict(),
+            f,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False
+        )
+
+    ui.success(f"Saved user template: {template_id}", "ConfigLoader")
+    return template_id
+
+
+def list_global_templates() -> List[Dict[str, Any]]:
+    """List all available agent templates (builtin + user-created)."""
     templates = []
 
-    if not templates_dir.exists():
-        return templates
+    # Builtin templates: extensions/agents/
+    builtin_dir = Path(settings.project_root) / "extensions" / "agents"
+    if builtin_dir.exists():
+        for agent_dir in builtin_dir.iterdir():
+            if not agent_dir.is_dir():
+                continue
+            config_path = agent_dir / "agent.yaml"
+            data = _parse_yaml_file(config_path)
+            if data:
+                templates.append({
+                    "id": agent_dir.name,
+                    "name": data.get("name", agent_dir.name),
+                    "description": data.get("description", ""),
+                    "path": str(config_path),
+                    "source": "builtin",
+                })
 
-    for agent_dir in templates_dir.iterdir():
-        if not agent_dir.is_dir():
-            continue
-
-        config_path = agent_dir / "agent.yaml"
-        data = _parse_yaml_file(config_path)
-
-        if data:
-            templates.append({
-                "id": agent_dir.name,
-                "name": data.get("name", agent_dir.name),
-                "description": data.get("description", ""),
-                "path": str(config_path),
-            })
+    # User-created templates: data/agents/
+    user_dir = Path(settings.agents_root)
+    if user_dir.exists():
+        for agent_dir in user_dir.iterdir():
+            if not agent_dir.is_dir():
+                continue
+            config_path = agent_dir / "agent.yaml"
+            data = _parse_yaml_file(config_path)
+            if data:
+                templates.append({
+                    "id": agent_dir.name,
+                    "name": data.get("name", agent_dir.name),
+                    "description": data.get("description", ""),
+                    "path": str(config_path),
+                    "source": "user",
+                })
 
     return templates
 
