@@ -9,6 +9,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { FileTree } from "@/components/FileTree";
 import { AgentConfig } from "@/components/AgentConfig";
+import { toast } from "sonner";
 
 interface Message {
   id: string;
@@ -64,6 +65,19 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
       // Stop loading when session completes
       if (message.type === "session_complete") {
+        setIsLoading(false);
+      }
+
+      // Handle agent_created: auto-navigate to new project
+      if (message.type === "agent_created") {
+        const newProjectId = message.metadata?.new_project_id;
+        const templateName = message.metadata?.template_name;
+        if (newProjectId) {
+          toast.success(`Agent "${templateName}" 已创建，正在跳转...`);
+          setTimeout(() => {
+            window.location.href = `/chat/${newProjectId}`;
+          }, 1500);
+        }
         setIsLoading(false);
       }
     };
