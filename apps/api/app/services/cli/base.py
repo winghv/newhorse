@@ -110,6 +110,7 @@ class BaseCLI(ABC):
         # Resolve model
         cli_model = MODEL_MAPPING.get(model, "claude-sonnet-4-5-20250929") if model else "claude-sonnet-4-5-20250929"
         project_path = os.path.join(settings.projects_root, project_id)
+        os.makedirs(project_path, exist_ok=True)
 
         # Check for /clear command
         is_clear_command = instruction.strip().lower() == "/clear"
