@@ -31,6 +31,16 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Load message history from server
+    fetch(`/api/chat/${projectId}/messages`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setMessages(data.filter((m: Message) => !m.metadata?.hidden_from_ui));
+        }
+      })
+      .catch((err) => console.error("Failed to load messages:", err));
+
     // Connect WebSocket
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/chat/${projectId}`);

@@ -10,7 +10,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPExce
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, SessionLocal
 from app.models.projects import Project
 from app.models.messages import Message
 from app.services.cli import agent_manager
@@ -78,6 +78,24 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
 
             ui.info(f"Received message: {content[:50]}...", "Chat")
 
+            # Persist user message to database
+            db = SessionLocal()
+            try:
+                user_msg = Message(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    role="user",
+                    message_type="chat",
+                    content=content,
+                )
+                db.add(user_msg)
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                ui.error(f"Failed to save user message: {e}", "Chat")
+            finally:
+                db.close()
+
             # Get project to determine agent type
             # For simplicity, we use the default Hello agent here
             agent = agent_manager.get_agent(AgentType.HELLO)
@@ -106,6 +124,17 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                     "metadata": msg.metadata_json,
                     "created_at": msg.created_at.isoformat() if msg.created_at else None,
                 }, project_id)
+
+                # Persist assistant/system messages to database
+                db = SessionLocal()
+                try:
+                    db.add(msg)
+                    db.commit()
+                except Exception as e:
+                    db.rollback()
+                    ui.error(f"Failed to save message: {e}", "Chat")
+                finally:
+                    db.close()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, project_id)
