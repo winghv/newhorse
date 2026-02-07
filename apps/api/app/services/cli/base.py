@@ -126,9 +126,50 @@ class BaseCLI(ABC):
         options.permission_mode = "bypassPermissions"
         ui.info(f"Using model: {options.model}", "Agent")
 
+        got_assistant_content = False
+        attempted_resume = options.resume is not None
+        held_result_msg = None
+
+        async for msg in self._run_streaming(
+            options, processed_instruction, project_id, session_id,
+            cli_model, is_clear_command, log_callback,
+        ):
+            if msg.role == "assistant" and msg.message_type == "chat":
+                got_assistant_content = True
+            # Hold back session_complete on potential stale resume
+            if msg.message_type == "session_complete" and attempted_resume and not got_assistant_content:
+                held_result_msg = msg
+                continue
+            yield msg
+
+        # Detect stale session resume: 0ms result with no assistant content
+        if not got_assistant_content and attempted_resume and not is_clear_command:
+            ui.info("Stale session detected, retrying with fresh session", "Agent")
+            log_callback({"claude_session_id": None})
+            options.resume = None
+
+            async for msg in self._run_streaming(
+                options, processed_instruction, project_id, session_id,
+                cli_model, is_clear_command, log_callback,
+            ):
+                yield msg
+        elif held_result_msg:
+            yield held_result_msg
+
+    async def _run_streaming(
+        self,
+        options: ClaudeAgentOptions,
+        instruction: str,
+        project_id: str,
+        session_id: Optional[str],
+        cli_model: str,
+        is_clear_command: bool,
+        log_callback: Callable[[dict], Any],
+    ) -> AsyncGenerator[Message, None]:
+        """Run a single streaming session with the Claude Agent SDK."""
         async with ClaudeSDKClient(options=options) as client:
             self.cli = client
-            await self.cli.query(processed_instruction)
+            await self.cli.query(instruction)
 
             async for message_obj in self.cli.receive_messages():
                 # Handle SystemMessage
