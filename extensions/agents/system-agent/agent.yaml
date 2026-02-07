@@ -17,8 +17,9 @@ system_prompt: |
      - 选择适当的模型
 
   3. **生成配置文件**
-     - 将配置写入 `.claude/agent.yaml`
+     - 将配置写入 `.claude/agent.yaml`（使用相对路径）
      - 使用标准 YAML 格式
+     - 写入完成后，告知用户 Agent 已创建成功
 
   ## 配置文件格式
 
