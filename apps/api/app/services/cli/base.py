@@ -125,6 +125,18 @@ class BaseCLI(ABC):
         )
 
         options.permission_mode = "bypassPermissions"
+
+        # Append working directory constraint to system prompt
+        abs_project_path = os.path.abspath(project_path)
+        cwd_instruction = (
+            f"\n\n## Working Directory\n"
+            f"Your current working directory is: {abs_project_path}\n"
+            f"IMPORTANT: All file operations (Read, Write, Edit) MUST use relative paths "
+            f"(e.g. `greeting.html`, `src/app.js`). "
+            f"NEVER use absolute paths like /tmp/. Files will be created in the working directory automatically."
+        )
+        options.system_prompt = (options.system_prompt or "") + cwd_instruction
+
         ui.info(f"Using model: {options.model}", "Agent")
 
         got_assistant_content = False
