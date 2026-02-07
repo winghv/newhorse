@@ -58,7 +58,8 @@ class HelloAgent(BaseCLI):
         claude_session_id: Optional[str],
         model: Optional[str] = None,
         force_new_session: bool = False,
-        user_config: Optional[Dict[str, str]] = None
+        user_config: Optional[Dict[str, str]] = None,
+        agent_type: Optional[str] = None,
     ) -> ClaudeAgentOptions:
         """Initialize Claude Agent options for Hello Agent."""
 
@@ -72,9 +73,10 @@ class HelloAgent(BaseCLI):
             model="claude-sonnet-4-5-20250929",
             allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         )
-        config = load_agent_config(project_path, agent_type="hello", default_config=default_config)
+        resolved_agent_type = agent_type or "hello"
+        config = load_agent_config(project_path, agent_type=resolved_agent_type, default_config=default_config)
 
-        ui.info(f"Initializing Hello Agent for project: {project_id}", "HelloAgent")
+        ui.info(f"Initializing agent ({resolved_agent_type}) for project: {project_id}", "HelloAgent")
         ui.debug(f"Config source: {config.config_source}", "HelloAgent")
 
         # Resolve model (command parameter overrides config)

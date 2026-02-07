@@ -70,7 +70,8 @@ class BaseCLI(ABC):
         claude_session_id: Optional[str],
         model: Optional[str] = None,
         force_new_session: bool = False,
-        user_config: Optional[Dict[str, str]] = None
+        user_config: Optional[Dict[str, str]] = None,
+        agent_type: Optional[str] = None,
     ) -> ClaudeAgentOptions:
         """Initialize Claude Agent options for this agent type."""
         pass
@@ -87,11 +88,13 @@ class BaseCLI(ABC):
         is_initial_prompt: bool = False,
         permission_mode: PermissionMode = "default",
         user_config: Optional[Dict[str, str]] = None,
+        agent_type: Optional[str] = None,
     ) -> AsyncGenerator[Message, None]:
         """Execute instruction using Claude Agent SDK with streaming."""
 
         self.current_project_id = project_id
         self.session_start_time = datetime.now(timezone.utc)
+        self.current_agent_type = agent_type
 
         ui.info("Starting Claude Agent SDK execution", "Agent")
         ui.debug(f"Project ID: {project_id}", "Agent")
@@ -121,7 +124,8 @@ class BaseCLI(ABC):
             model=model,
             claude_session_id=claude_session_id,
             force_new_session=is_clear_command,
-            user_config=user_config
+            user_config=user_config,
+            agent_type=agent_type
         )
 
         options.permission_mode = "bypassPermissions"
