@@ -19,6 +19,7 @@ interface AgentTemplate {
   id: string;
   name: string;
   description: string;
+  source?: string;
 }
 
 export default function Home() {
@@ -54,7 +55,10 @@ export default function Home() {
       const res = await fetch("/api/agents/templates");
       if (res.ok) {
         const data = await res.json();
-        setTemplates(data.templates || []);
+        const filtered = (data.templates || []).filter(
+            (t: AgentTemplate) => t.id !== "system-agent"
+        );
+        setTemplates(filtered);
       }
     } catch (error) {
       console.error("Failed to load templates:", error);
@@ -214,7 +218,14 @@ export default function Home() {
                         className="w-full px-3 py-2 text-left hover:bg-zinc-700 transition flex items-center justify-between"
                       >
                         <div>
-                          <div className="font-medium">{template.name}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            {template.name}
+                            {template.source === "user" && (
+                              <span className="text-xs px-1.5 py-0.5 bg-blue-900/50 text-blue-400 rounded">
+                                自定义
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-zinc-500">{template.description}</div>
                         </div>
                         {selectedTemplate === template.id && <Check className="w-4 h-4 text-green-500" />}
