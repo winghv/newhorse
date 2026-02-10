@@ -112,6 +112,14 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             # Get or create session
             claude_session_id = session_store.get(project_id)
 
+            # Record config file mtime before agent execution (for system-agent detection)
+            config_mtime_before = 0
+            if agent_type == "system-agent":
+                project_path = os.path.join(settings.projects_root, project_id)
+                config_path = os.path.join(project_path, ".claude", "agent.yaml")
+                if os.path.exists(config_path):
+                    config_mtime_before = os.path.getmtime(config_path)
+
             def log_callback(data: dict):
                 if "claude_session_id" in data:
                     session_store[project_id] = data["claude_session_id"]
@@ -146,60 +154,64 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                 finally:
                     db.close()
 
-            # Post-processing: if system-agent, check for generated config
+            # Post-processing: if system-agent, check for newly generated config
             if agent_type == "system-agent":
                 project_path = os.path.join(settings.projects_root, project_id)
                 config_path = os.path.join(project_path, ".claude", "agent.yaml")
 
                 if os.path.exists(config_path):
-                    config = load_agent_config(project_path)
-                    ui.info(f"System agent generated config: {config.name}", "Chat")
+                    config_mtime_after = os.path.getmtime(config_path)
 
-                    # Save as user template
-                    template_id = save_user_template(config)
+                    # Only process if the file was created/modified during this execution
+                    if config_mtime_after > config_mtime_before:
+                        config = load_agent_config(project_path)
+                        ui.info(f"System agent generated config: {config.name}", "Chat")
 
-                    # Create new project using this template
-                    new_project_id = str(uuid.uuid4())[:8]
-                    new_project_path = os.path.join(settings.projects_root, new_project_id)
-                    os.makedirs(new_project_path, exist_ok=True)
+                        # Save as user template
+                        template_id = save_user_template(config)
 
-                    # Save config to new project
-                    config.config_source = f"project:{new_project_id}"
-                    save_project_config(new_project_path, config)
+                        # Create new project using this template
+                        new_project_id = str(uuid.uuid4())[:8]
+                        new_project_path = os.path.join(settings.projects_root, new_project_id)
+                        os.makedirs(new_project_path, exist_ok=True)
 
-                    # Create DB record for new project
-                    db_new = SessionLocal()
-                    try:
-                        new_project = Project(
-                            id=new_project_id,
-                            name=config.name,
-                            description=config.description,
-                            repo_path=new_project_path,
-                            preferred_cli="hello",
-                            selected_model=config.model,
-                            status="active",
-                        )
-                        db_new.add(new_project)
-                        db_new.commit()
-                    except Exception as e:
-                        db_new.rollback()
-                        ui.error(f"Failed to create project from template: {e}", "Chat")
-                    finally:
-                        db_new.close()
+                        # Save config to new project
+                        config.config_source = f"project:{new_project_id}"
+                        save_project_config(new_project_path, config)
 
-                    # Send agent_created event to frontend
-                    await manager.send_message({
-                        "id": f"agent-created-{template_id}",
-                        "role": "system",
-                        "content": f"Agent \"{config.name}\" 已创建",
-                        "type": "agent_created",
-                        "metadata": {
-                            "template_id": template_id,
-                            "template_name": config.name,
-                            "new_project_id": new_project_id,
-                        },
-                        "created_at": datetime.utcnow().isoformat(),
-                    }, project_id)
+                        # Create DB record for new project
+                        db_new = SessionLocal()
+                        try:
+                            new_project = Project(
+                                id=new_project_id,
+                                name=config.name,
+                                description=config.description,
+                                repo_path=new_project_path,
+                                preferred_cli=template_id,
+                                selected_model=config.model,
+                                status="active",
+                            )
+                            db_new.add(new_project)
+                            db_new.commit()
+                        except Exception as e:
+                            db_new.rollback()
+                            ui.error(f"Failed to create project from template: {e}", "Chat")
+                        finally:
+                            db_new.close()
+
+                        # Send agent_created event to frontend
+                        await manager.send_message({
+                            "id": f"agent-created-{template_id}",
+                            "role": "system",
+                            "content": f"Agent \"{config.name}\" 已创建",
+                            "type": "agent_created",
+                            "metadata": {
+                                "template_id": template_id,
+                                "template_name": config.name,
+                                "new_project_id": new_project_id,
+                            },
+                            "created_at": datetime.utcnow().isoformat(),
+                        }, project_id)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, project_id)

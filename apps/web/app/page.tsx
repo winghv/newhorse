@@ -73,7 +73,10 @@ export default function Home() {
       const res = await fetch("/api/projects/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newProjectName }),
+        body: JSON.stringify({
+          name: newProjectName,
+          preferred_cli: useAiGeneration ? "system-agent" : "hello",
+        }),
       });
 
       if (res.ok) {
@@ -95,10 +98,6 @@ export default function Home() {
 
         // If AI generation selected, redirect to chat with system-agent
         if (useAiGeneration) {
-          // Apply system-agent template first
-          await fetch(`/api/agents/projects/${project.id}/config/from-template?template_id=system-agent`, {
-            method: "POST",
-          });
           router.push(`/chat/${project.id}`);
         }
       }
