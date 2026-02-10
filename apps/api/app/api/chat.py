@@ -208,6 +208,8 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                             "metadata": {
                                 "template_id": template_id,
                                 "template_name": config.name,
+                                "template_description": config.description,
+                                "template_model": config.model,
                                 "new_project_id": new_project_id,
                             },
                             "created_at": datetime.utcnow().isoformat(),

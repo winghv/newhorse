@@ -10,6 +10,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { FileTree } from "@/components/FileTree";
 import { AgentConfig } from "@/components/AgentConfig";
 import { toast } from "sonner";
+import { AgentCreatedModal } from "@/components/AgentCreatedModal";
 
 interface Message {
   id: string;
@@ -30,6 +31,13 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showAgentModal, setShowAgentModal] = useState(false);
+  const [agentModalData, setAgentModalData] = useState<{
+    name: string;
+    description: string;
+    model: string;
+    newProjectId: string;
+  } | null>(null);
 
   useEffect(() => {
     // Load message history from server
@@ -68,15 +76,17 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         setIsLoading(false);
       }
 
-      // Handle agent_created: auto-navigate to new project
+      // Handle agent_created: show confirmation modal
       if (message.type === "agent_created") {
         const newProjectId = message.metadata?.new_project_id;
-        const templateName = message.metadata?.template_name;
         if (newProjectId) {
-          toast.success(`Agent "${templateName}" 已创建，正在跳转...`);
-          setTimeout(() => {
-            window.location.href = `/chat/${newProjectId}`;
-          }, 1500);
+          setAgentModalData({
+            name: message.metadata?.template_name || "",
+            description: message.metadata?.template_description || "",
+            model: message.metadata?.template_model || "claude-sonnet-4-5-20250929",
+            newProjectId,
+          });
+          setShowAgentModal(true);
         }
         setIsLoading(false);
       }
@@ -119,6 +129,42 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     wsRef.current.send(JSON.stringify({ content: input }));
     setInput("");
     setIsLoading(true);
+  };
+
+  const handleAgentConfirm = async (data: { name: string; description: string; model: string }) => {
+    if (!agentModalData) return;
+
+    const hasChanges =
+      data.name !== agentModalData.name ||
+      data.description !== agentModalData.description ||
+      data.model !== agentModalData.model;
+
+    if (hasChanges) {
+      try {
+        await fetch(`/api/projects/${agentModalData.newProjectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: data.name,
+            description: data.description,
+            selected_model: data.model,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to update project:", error);
+      }
+    }
+
+    toast.success(`Agent "${data.name}" 已确认，正在跳转...`);
+    setShowAgentModal(false);
+    setTimeout(() => {
+      window.location.href = `/chat/${agentModalData.newProjectId}`;
+    }, 800);
+  };
+
+  const handleAgentCancel = () => {
+    setShowAgentModal(false);
+    setAgentModalData(null);
   };
 
   return (
@@ -298,6 +344,19 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           </div>
         )}
       </div>
+
+      {/* Agent Created Confirmation Modal */}
+      {agentModalData && (
+        <AgentCreatedModal
+          isOpen={showAgentModal}
+          agentName={agentModalData.name}
+          agentDescription={agentModalData.description}
+          agentModel={agentModalData.model}
+          newProjectId={agentModalData.newProjectId}
+          onConfirm={handleAgentConfirm}
+          onCancel={handleAgentCancel}
+        />
+      )}
     </main>
   );
 }

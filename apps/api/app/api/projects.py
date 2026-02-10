@@ -25,6 +25,12 @@ class ProjectCreate(BaseModel):
     selected_model: str = "claude-sonnet-4-5-20250929"
 
 
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    selected_model: Optional[str] = None
+
+
 class ProjectResponse(BaseModel):
     id: str
     name: str
@@ -79,6 +85,40 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    return ProjectResponse.model_validate(project)
+
+
+@router.patch("/{project_id}")
+def update_project(project_id: str, updates: ProjectUpdate, db: Session = Depends(get_db)):
+    """Update a project's basic info and sync to agent config."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if updates.name is not None:
+        project.name = updates.name
+    if updates.description is not None:
+        project.description = updates.description
+    if updates.selected_model is not None:
+        project.selected_model = updates.selected_model
+
+    db.commit()
+    db.refresh(project)
+
+    # Sync changes to project's agent.yaml if it exists
+    config_path = os.path.join(project.repo_path, ".claude", "agent.yaml")
+    if os.path.exists(config_path):
+        from app.services.cli.config_loader import load_agent_config, save_project_config
+        config = load_agent_config(project.repo_path)
+        if updates.name is not None:
+            config.name = updates.name
+        if updates.description is not None:
+            config.description = updates.description
+        if updates.selected_model is not None:
+            config.model = updates.selected_model
+        save_project_config(project.repo_path, config)
+
+    ui.info(f"Updated project: {project_id}", "Projects")
     return ProjectResponse.model_validate(project)
 
 
