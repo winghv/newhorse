@@ -16,9 +16,10 @@ interface PreviewPanelProps {
   projectId: string;
   filePath: string;
   onClose: () => void;
+  isDragging?: boolean;
 }
 
-export function PreviewPanel({ projectId, filePath, onClose }: PreviewPanelProps) {
+export function PreviewPanel({ projectId, filePath, onClose, isDragging }: PreviewPanelProps) {
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [code, setCode] = useState<string>("");
@@ -162,6 +163,9 @@ export function PreviewPanel({ projectId, filePath, onClose }: PreviewPanelProps
               sandbox="allow-scripts allow-same-origin"
               onLoad={() => setIframeLoading(false)}
             />
+            {isDragging && (
+              <div className="absolute inset-0 z-10" />
+            )}
           </>
         ) : (
           <div className="h-full overflow-auto bg-zinc-950 p-4">

@@ -33,6 +33,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [isLoading, setIsLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [showFileTree, setShowFileTree] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const lastDetectedFileRef = useRef<string | null>(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -365,12 +366,13 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           {/* Resize handle + Preview panel (conditional) */}
           {previewFile && (
             <>
-              <ResizeHandle />
+              <ResizeHandle onDragging={setIsDragging} />
               <Panel minSize={25} defaultSize={50}>
                 <PreviewPanel
                   projectId={projectId}
                   filePath={previewFile}
                   onClose={() => setPreviewFile(null)}
+                  isDragging={isDragging}
                 />
               </Panel>
             </>
