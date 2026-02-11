@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, Bot, User, Loader2, PanelLeftClose, PanelLeft, Settings, X } from "lucide-react";
+import { ArrowLeft, Send, Bot, User, Loader2, FolderOpen, Settings, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { FileTree } from "@/components/FileTree";
+import { Panel, Group } from "react-resizable-panels";
+import { PreviewPanel } from "@/components/PreviewPanel";
+import { ResizeHandle } from "@/components/ResizeHandle";
+import { FileTreeDrawer } from "@/components/FileTreeDrawer";
+import { isPreviewable } from "@/components/FilePreview";
 import { AgentConfig } from "@/components/AgentConfig";
 import { toast } from "sonner";
 import { AgentCreatedModal } from "@/components/AgentCreatedModal";
@@ -27,7 +31,9 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showFilePanel, setShowFilePanel] = useState(true);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [showFileTree, setShowFileTree] = useState(false);
+  const lastDetectedFileRef = useRef<string | null>(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -70,6 +76,30 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
+
+      // Auto-detect HTML/SVG file writes for preview
+      if (message.type === "tool_use") {
+        const toolName = message.metadata?.tool_name;
+        const toolInput = message.metadata?.tool_input;
+        if (
+          (toolName === "Write" || toolName === "write_file" || toolName === "write") &&
+          toolInput?.file_path
+        ) {
+          const filePath = toolInput.file_path;
+          const relativePath = filePath.includes("/")
+            ? filePath.split("/").slice(-1)[0]
+            : filePath;
+          if (isPreviewable(relativePath) && filePath !== lastDetectedFileRef.current) {
+            lastDetectedFileRef.current = filePath;
+            const pathParts = filePath.split("/");
+            const workspaceIdx = pathParts.findIndex((p: string) => p === "workspace");
+            const relPath = workspaceIdx >= 0
+              ? pathParts.slice(workspaceIdx + 1).join("/")
+              : pathParts[pathParts.length - 1];
+            setPreviewFile(relPath);
+          }
+        }
+      }
 
       // Stop loading when session completes
       if (message.type === "session_complete") {
@@ -175,15 +205,13 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <button
-          onClick={() => setShowFilePanel(!showFilePanel)}
-          className="p-2 hover:bg-zinc-800 rounded-lg transition"
-          title={showFilePanel ? "Hide files" : "Show files"}
+          onClick={() => setShowFileTree(!showFileTree)}
+          className={`p-2 rounded-lg transition ${
+            showFileTree ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
+          }`}
+          title="Project files"
         >
-          {showFilePanel ? (
-            <PanelLeftClose className="w-5 h-5" />
-          ) : (
-            <PanelLeft className="w-5 h-5" />
-          )}
+          <FolderOpen className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-blue-500" />
@@ -209,124 +237,147 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         </div>
       </header>
 
-      {/* Main content area with file panel and chat */}
+      {/* Main content area */}
       <div className="flex flex-1 min-h-0">
-        {/* File Panel - hidden on mobile by default */}
-        {showFilePanel && (
-          <div className="hidden md:block w-80 border-r border-zinc-800 bg-zinc-900/50 flex-shrink-0">
-            <FileTree projectId={projectId} />
-          </div>
-        )}
-
-        {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center py-12 text-zinc-500">
-                <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Start a conversation with your AI agent</p>
-              </div>
-            )}
-
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${message.role === "user" ? "justify-end" : ""}`}
-              >
-                {message.role !== "user" && (
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                )}
-
-                <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === "user"
-                      ? "bg-blue-600"
-                      : message.type === "tool_use"
-                      ? "bg-zinc-800 border border-zinc-700"
-                      : message.type === "session_complete"
-                      ? "bg-green-900/30 border border-green-800"
-                      : "bg-zinc-900"
-                  }`}
-                >
-                  {message.type === "tool_use" ? (
-                    <div className="text-sm font-mono">{message.content}</div>
-                  ) : (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || "");
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              style={vscDarkPlus}
-                              language={match[1]}
-                              PreTag="div"
-                              {...props}
-                            >
-                              {String(children).replace(/\n$/, "")}
-                            </SyntaxHighlighter>
-                          ) : (
-                            <code className="bg-zinc-800 px-1 rounded" {...props}>
-                              {children}
-                            </code>
-                          );
-                        },
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
-                  )}
-                </div>
-
-                {message.role === "user" && (
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div className="bg-zinc-900 rounded-lg p-3">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-4 border-t border-zinc-800">
-            <div className="flex gap-2 max-w-4xl mx-auto">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                placeholder="Type a message..."
-                className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
-                disabled={!isConnected || isLoading}
+        <Group orientation="horizontal">
+          {/* Chat panel */}
+          <Panel minSize={30} defaultSize={previewFile ? 50 : 100}>
+            <div className="flex-1 flex flex-col h-full min-w-0 relative">
+              {/* File tree drawer overlay */}
+              <FileTreeDrawer
+                projectId={projectId}
+                isOpen={showFileTree}
+                onClose={() => setShowFileTree(false)}
+                onFileSelect={(path) => {
+                  if (isPreviewable(path)) {
+                    setPreviewFile(path);
+                  }
+                }}
               />
-              <button
-                onClick={sendMessage}
-                disabled={!isConnected || isLoading || !input.trim()}
-                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
 
-        {/* Agent Config Panel */}
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 && (
+                  <div className="text-center py-12 text-zinc-500">
+                    <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Start a conversation with your AI agent</p>
+                  </div>
+                )}
+
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : ""}`}
+                  >
+                    {message.role !== "user" && (
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-4 h-4" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        message.role === "user"
+                          ? "bg-blue-600"
+                          : message.type === "tool_use"
+                          ? "bg-zinc-800 border border-zinc-700"
+                          : message.type === "session_complete"
+                          ? "bg-green-900/30 border border-green-800"
+                          : "bg-zinc-900"
+                      }`}
+                    >
+                      {message.type === "tool_use" ? (
+                        <div className="text-sm font-mono">{message.content}</div>
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            code({ node, inline, className, children, ...props }: any) {
+                              const match = /language-(\w+)/.exec(className || "");
+                              return !inline && match ? (
+                                <SyntaxHighlighter
+                                  style={vscDarkPlus}
+                                  language={match[1]}
+                                  PreTag="div"
+                                  {...props}
+                                >
+                                  {String(children).replace(/\n$/, "")}
+                                </SyntaxHighlighter>
+                              ) : (
+                                <code className="bg-zinc-800 px-1 rounded" {...props}>
+                                  {children}
+                                </code>
+                              );
+                            },
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      )}
+                    </div>
+
+                    {message.role === "user" && (
+                      <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isLoading && (
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                      <Bot className="w-4 h-4" />
+                    </div>
+                    <div className="bg-zinc-900 rounded-lg p-3">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="p-4 border-t border-zinc-800">
+                <div className="flex gap-2 max-w-4xl mx-auto">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
+                    disabled={!isConnected || isLoading}
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!isConnected || isLoading || !input.trim()}
+                    className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Resize handle + Preview panel (conditional) */}
+          {previewFile && (
+            <>
+              <ResizeHandle />
+              <Panel minSize={25} defaultSize={50}>
+                <PreviewPanel
+                  projectId={projectId}
+                  filePath={previewFile}
+                  onClose={() => setPreviewFile(null)}
+                />
+              </Panel>
+            </>
+          )}
+        </Group>
+
+        {/* Agent Config Panel (unchanged, stays outside PanelGroup) */}
         {showConfigPanel && (
           <div className="w-80 md:w-96 border-l border-zinc-800 bg-zinc-900/50 flex-shrink-0 flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-zinc-800">
