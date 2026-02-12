@@ -257,7 +257,8 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
               />
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="max-w-4xl mx-auto space-y-4">
                 {messages.length === 0 && (
                   <div className="text-center py-12 text-zinc-500">
                     <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -337,6 +338,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                 )}
 
                 <div ref={messagesEndRef} />
+                </div>
               </div>
 
               {/* Input */}
