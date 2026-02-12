@@ -13,3 +13,5 @@ data/
 .DS_Store
 CLAUDE.md
 .worktrees/
+docs/plans/*
+*.tsbuildinfo
