@@ -261,6 +261,8 @@ export default function Home() {
                 </button>
 
                 {showTemplateDropdown && (
+                  <>
+                  <div className="fixed inset-0 z-[9]" onClick={() => setShowTemplateDropdown(false)} />
                   <div className="absolute z-10 w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl shadow-lg p-2">
                     {/* AI Generation - full width top */}
                     <button
@@ -328,6 +330,7 @@ export default function Home() {
                       不使用模板
                     </button>
                   </div>
+                  </>
                 )}
               </div>
             </div>
