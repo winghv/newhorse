@@ -64,6 +64,22 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     ws.onopen = () => {
       setIsConnected(true);
       console.log("WebSocket connected");
+
+      // Auto-send initial message from homepage creation
+      const storageKey = `newhorse-initial-message-${projectId}`;
+      const initialMessage = localStorage.getItem(storageKey);
+      if (initialMessage) {
+        localStorage.removeItem(storageKey);
+        const userMessage: Message = {
+          id: `user-${Date.now()}`,
+          role: "user",
+          content: initialMessage,
+          type: "chat",
+        };
+        setMessages((prev) => [...prev, userMessage]);
+        ws.send(JSON.stringify({ content: initialMessage }));
+        setIsLoading(true);
+      }
     };
 
     ws.onmessage = (event) => {
