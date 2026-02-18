@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SkillManager } from "./SkillManager";
 
 interface AgentTemplate {
   id: string;
@@ -31,14 +32,6 @@ interface AgentConfigProps {
   onConfigChange?: (config: AgentConfigData) => void;
   className?: string;
 }
-
-const AVAILABLE_SKILLS = [
-  { id: "coding", name: "Coding", description: "代码编写和调试" },
-  { id: "debugging", name: "Debugging", description: "问题诊断和修复" },
-  { id: "testing", name: "Testing", description: "测试编写和运行" },
-  { id: "documentation", name: "Documentation", description: "文档编写" },
-  { id: "review", name: "Review", description: "代码审查" },
-];
 
 const AVAILABLE_MODELS = [
   { id: "claude-sonnet-4-5-20250929", name: "Sonnet 4.5", description: "平衡速度和质量" },
@@ -257,26 +250,11 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       </div>
 
       {/* Skills */}
-      <div>
-        <label className="block text-sm text-zinc-400 mb-2">Skills</label>
-        <div className="flex flex-wrap gap-2">
-          {AVAILABLE_SKILLS.map((skill) => (
-            <button
-              key={skill.id}
-              onClick={() => toggleSkill(skill.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1.5 ${
-                config.skills.includes(skill.id)
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-              }`}
-              title={skill.description}
-            >
-              {config.skills.includes(skill.id) && <Check className="w-3 h-3" />}
-              {skill.name}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SkillManager
+        projectId={projectId}
+        selectedSkills={config.skills}
+        onToggleSkill={toggleSkill}
+      />
 
       {/* Save button */}
       <button
