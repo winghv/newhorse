@@ -111,8 +111,10 @@ def _build_file_tree(directory: Path, base_path: Path) -> List[FileNode]:
         return nodes
 
     for entry in entries:
-        # Skip hidden files and common ignore patterns
-        if entry.name.startswith(".") or entry.name in ("__pycache__", "node_modules", ".git"):
+        # Skip hidden files and common ignore patterns, but keep .claude
+        if entry.name in ("__pycache__", "node_modules", ".git"):
+            continue
+        if entry.name.startswith(".") and entry.name != ".claude":
             continue
 
         relative_path = str(entry.relative_to(base_path))

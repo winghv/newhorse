@@ -26,27 +26,48 @@ PROJECT_ROOT = find_project_root()
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 
+def _resolve_path(env_key: str, default_subpath: str) -> str:
+    """Resolve a path from env var, making relative paths relative to PROJECT_ROOT."""
+    raw = os.getenv(env_key)
+    if raw is None:
+        return str(PROJECT_ROOT / default_subpath)
+    p = Path(raw)
+    if not p.is_absolute():
+        return str(PROJECT_ROOT / raw)
+    return raw
+
+
+def _resolve_sqlite_url(env_key: str, default_subpath: str) -> str:
+    """Resolve SQLite URL, making relative paths relative to PROJECT_ROOT."""
+    raw = os.getenv(env_key)
+    if raw is None:
+        return f"sqlite:///{PROJECT_ROOT / default_subpath}"
+    prefix = "sqlite:///"
+    if raw.startswith(prefix):
+        db_path = raw[len(prefix):]
+        if not Path(db_path).is_absolute():
+            return f"sqlite:///{PROJECT_ROOT / db_path}"
+    return raw
+
+
 class Settings(BaseModel):
     """Application settings"""
 
     api_port: int = int(os.getenv("API_PORT", "8080"))
 
     # Database
-    database_url: str = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{PROJECT_ROOT / 'data' / 'newhorse.db'}",
+    database_url: str = _resolve_sqlite_url(
+        "DATABASE_URL", os.path.join("data", "newhorse.db")
     )
 
     # Projects storage
-    projects_root: str = os.getenv(
-        "PROJECTS_ROOT",
-        str(PROJECT_ROOT / "data" / "projects")
+    projects_root: str = _resolve_path(
+        "PROJECTS_ROOT", os.path.join("data", "projects")
     )
 
     # User-created agent templates
-    agents_root: str = os.getenv(
-        "AGENTS_ROOT",
-        str(PROJECT_ROOT / "data" / "agents")
+    agents_root: str = _resolve_path(
+        "AGENTS_ROOT", os.path.join("data", "agents")
     )
 
     # Claude sessions path
