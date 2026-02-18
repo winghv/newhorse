@@ -53,6 +53,10 @@ def health():
 @app.on_event("startup")
 async def on_startup():
     """Application startup handler."""
+    # Remove CLAUDECODE env var so Claude Agent SDK subprocess won't refuse to start
+    # when the API itself is launched from within a Claude Code session.
+    os.environ.pop("CLAUDECODE", None)
+
     ui.info("Initializing Newhorse API", "Startup")
 
     # Ensure data directory exists for SQLite database
