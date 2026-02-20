@@ -125,32 +125,64 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                     session_store[project_id] = data["claude_session_id"]
 
             # Stream responses
-            async for msg in agent.execute_with_streaming(
-                instruction=content,
-                project_id=project_id,
-                log_callback=log_callback,
-                session_id=str(uuid.uuid4()),
-                claude_session_id=claude_session_id,
-                model=model,
-                agent_type=agent_type,
-            ):
-                await manager.send_message({
-                    "id": msg.id,
-                    "role": msg.role,
-                    "content": msg.content,
-                    "type": msg.message_type,
-                    "metadata": msg.metadata_json,
-                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
-                }, project_id)
+            session_id = str(uuid.uuid4())
+            try:
+                async for msg in agent.execute_with_streaming(
+                    instruction=content,
+                    project_id=project_id,
+                    log_callback=log_callback,
+                    session_id=session_id,
+                    claude_session_id=claude_session_id,
+                    model=model,
+                    agent_type=agent_type,
+                ):
+                    await manager.send_message({
+                        "id": msg.id,
+                        "role": msg.role,
+                        "content": msg.content,
+                        "type": msg.message_type,
+                        "metadata": msg.metadata_json,
+                        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                    }, project_id)
 
-                # Persist assistant/system messages to database
+                    # Persist assistant/system messages to database
+                    db = SessionLocal()
+                    try:
+                        db.add(msg)
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        ui.error(f"Failed to save message: {e}", "Chat")
+                    finally:
+                        db.close()
+            except Exception as agent_err:
+                ui.error(f"Agent execution failed: {agent_err}", "Chat")
+                # Clear stale session so next message starts fresh
+                session_store.pop(project_id, None)
+
+                error_msg = Message(
+                    id=str(uuid.uuid4()),
+                    project_id=project_id,
+                    role="system",
+                    message_type="error",
+                    content=f"Agent error: {agent_err}",
+                    session_id=session_id,
+                    created_at=datetime.utcnow(),
+                )
+                await manager.send_message({
+                    "id": error_msg.id,
+                    "role": "system",
+                    "content": error_msg.content,
+                    "type": "error",
+                    "metadata": {"cli_type": "hello"},
+                    "created_at": error_msg.created_at.isoformat(),
+                }, project_id)
                 db = SessionLocal()
                 try:
-                    db.add(msg)
+                    db.add(error_msg)
                     db.commit()
-                except Exception as e:
+                except Exception:
                     db.rollback()
-                    ui.error(f"Failed to save message: {e}", "Chat")
                 finally:
                     db.close()
 

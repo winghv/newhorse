@@ -147,17 +147,30 @@ class BaseCLI(ABC):
         attempted_resume = options.resume is not None
         held_result_msg = None
 
-        async for msg in self._run_streaming(
-            options, processed_instruction, project_id, session_id,
-            cli_model, is_clear_command, log_callback,
-        ):
-            if msg.role == "assistant" and msg.message_type == "chat":
-                got_assistant_content = True
-            # Hold back session_complete on potential stale resume
-            if msg.message_type == "session_complete" and attempted_resume and not got_assistant_content:
-                held_result_msg = msg
-                continue
-            yield msg
+        try:
+            async for msg in self._run_streaming(
+                options, processed_instruction, project_id, session_id,
+                cli_model, is_clear_command, log_callback,
+            ):
+                if msg.role == "assistant" and msg.message_type == "chat":
+                    got_assistant_content = True
+                # Hold back session_complete on potential stale resume
+                if msg.message_type == "session_complete" and attempted_resume and not got_assistant_content:
+                    held_result_msg = msg
+                    continue
+                yield msg
+        except Exception as e:
+            if attempted_resume:
+                ui.info(f"Session resume failed ({e}), retrying with fresh session", "Agent")
+                log_callback({"claude_session_id": None})
+                options.resume = None
+                async for msg in self._run_streaming(
+                    options, processed_instruction, project_id, session_id,
+                    cli_model, is_clear_command, log_callback,
+                ):
+                    yield msg
+                return
+            raise
 
         # Detect stale session resume: 0ms result with no assistant content
         if not got_assistant_content and attempted_resume and not is_clear_command:
