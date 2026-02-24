@@ -4,6 +4,7 @@ Hello Agent - A simple demonstration agent.
 This is a minimal agent implementation showing how to extend BaseCLI.
 Use this as a template for creating your own agents.
 """
+import asyncio
 import os
 from typing import Any, Dict, Optional
 
@@ -12,6 +13,7 @@ from claude_agent_sdk import ClaudeAgentOptions
 from app.common.types import AgentType
 from app.core.config import settings
 from app.core.terminal_ui import ui
+from app.core.skill_watcher import get_skill_watcher
 from ..base import BaseCLI, MODEL_MAPPING
 from ..config_loader import load_agent_config, AgentConfig
 
@@ -64,6 +66,15 @@ class HelloAgent(BaseCLI):
         """Initialize Claude Agent options for Hello Agent."""
 
         project_path = os.path.join(settings.projects_root, project_id)
+
+        # Skill 热加载检查 - 每次 Agent 启动前检查 skill 目录变化
+        try:
+            watcher = get_skill_watcher()
+            has_changes = asyncio.run(watcher.check_changes(project_path))
+            if has_changes:
+                ui.info("Skill changes detected, cache refreshed", "HelloAgent")
+        except Exception as e:
+            ui.debug(f"Skill watcher check failed: {e}", "HelloAgent")
 
         # Load agent configuration (project-level > global template > defaults)
         default_config = AgentConfig(
