@@ -11,7 +11,7 @@ import { Panel, Group } from "react-resizable-panels";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { ResizeHandle } from "@/components/ResizeHandle";
 import { FileTreeDrawer } from "@/components/FileTreeDrawer";
-import { isPreviewable } from "@/components/FilePreview";
+import { isPreviewable } from "@/components/PreviewPanel";
 import { AgentConfig } from "@/components/AgentConfig";
 import { toast } from "sonner";
 import { AgentCreatedModal } from "@/components/AgentCreatedModal";
@@ -266,9 +266,8 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                 isOpen={showFileTree}
                 onClose={() => setShowFileTree(false)}
                 onFileSelect={(path) => {
-                  if (isPreviewable(path)) {
-                    setPreviewFile(path);
-                  }
+                  // 打开预览面板，可视化文件默认预览，其他默认编辑
+                  setPreviewFile(path);
                 }}
               />
 
@@ -391,6 +390,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                   filePath={previewFile}
                   onClose={() => setPreviewFile(null)}
                   isDragging={isDragging}
+                  defaultMode={isPreviewable(previewFile) ? "preview" : "edit"}
                 />
               </Panel>
             </>
