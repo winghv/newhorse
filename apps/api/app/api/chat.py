@@ -62,6 +62,9 @@ manager = ConnectionManager()
 # Store claude_session_id per project (in production, use Redis or DB)
 session_store: dict[str, str] = {}
 
+# Track currently executing agent per project
+executing_agent: dict[str, object] = {}
+
 
 @router.websocket("/{project_id}")
 async def websocket_endpoint(websocket: WebSocket, project_id: str):
@@ -72,6 +75,31 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
         while True:
             data = await websocket.receive_text()
             message_data = json.loads(data)
+
+            # Handle pause action
+            if message_data.get("action") == "pause":
+                if project_id in executing_agent:
+                    try:
+                        await executing_agent[project_id].interrupt()
+                        ui.info(f"Execution paused for project: {project_id}", "Chat")
+                        await manager.send_message({
+                            "id": str(uuid.uuid4()),
+                            "role": "system",
+                            "content": "⏸️ Execution paused",
+                            "type": "paused",
+                            "metadata": {"can_resume": True},
+                            "created_at": datetime.utcnow().isoformat(),
+                        }, project_id)
+                    except Exception as e:
+                        ui.error(f"Failed to pause execution: {e}", "Chat")
+                        await manager.send_message({
+                            "id": str(uuid.uuid4()),
+                            "role": "system",
+                            "content": f"Failed to pause: {e}",
+                            "type": "error",
+                            "created_at": datetime.utcnow().isoformat(),
+                        }, project_id)
+                continue
 
             content = message_data.get("content", "")
             model = message_data.get("model")
@@ -108,6 +136,9 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                 db_for_project.close()
 
             agent = agent_manager.get_agent(AgentType.HELLO)
+
+            # Track executing agent for pause support
+            executing_agent[project_id] = agent
 
             # Get or create session
             claude_session_id = session_store.get(project_id)
@@ -185,6 +216,9 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                     db.rollback()
                 finally:
                     db.close()
+            finally:
+                # Clear executing agent reference
+                executing_agent.pop(project_id, None)
 
             # Post-processing: if system-agent, check for newly generated config
             if agent_type == "system-agent":
@@ -249,9 +283,11 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, project_id)
+        executing_agent.pop(project_id, None)
     except Exception as e:
         ui.error(f"WebSocket error: {e}", "Chat")
         manager.disconnect(websocket, project_id)
+        executing_agent.pop(project_id, None)
 
 
 @router.get("/{project_id}/messages")

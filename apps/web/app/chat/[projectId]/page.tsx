@@ -119,8 +119,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       }
 
       // Stop loading when session completes
-      if (message.type === "session_complete") {
+      if (message.type === "session_complete" || message.type === "paused") {
         setIsLoading(false);
+        if (message.type === "paused") {
+          toast.info("Execution paused. Send a message to continue.");
+        }
       }
 
       // Handle agent_created: show confirmation modal
@@ -176,6 +179,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     wsRef.current.send(JSON.stringify({ content: input }));
     setInput("");
     setIsLoading(true);
+  };
+
+  const handlePause = () => {
+    if (!wsRef.current || !isConnected || !isLoading) return;
+    wsRef.current.send(JSON.stringify({ action: "pause" }));
   };
 
   const handleAgentConfirm = async (data: { name: string; description: string; model: string }) => {
@@ -363,18 +371,32 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                    placeholder="Type a message..."
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !isLoading && sendMessage()}
+                    placeholder={isLoading ? "Agent is executing..." : "Type a message..."}
                     className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
                     disabled={!isConnected || isLoading}
                   />
-                  <button
-                    onClick={sendMessage}
-                    disabled={!isConnected || isLoading || !input.trim()}
-                    className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
+                  {isLoading ? (
+                    <button
+                      onClick={handlePause}
+                      disabled={!isConnected}
+                      className="px-4 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
+                      title="Pause execution"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={sendMessage}
+                      disabled={!isConnected || isLoading || !input.trim()}
+                      className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
