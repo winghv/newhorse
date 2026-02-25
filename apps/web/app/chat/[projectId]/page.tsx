@@ -41,6 +41,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
+  const [defaultLoaded, setDefaultLoaded] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [agentModalData, setAgentModalData] = useState<{
     name: string;
@@ -48,6 +49,27 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     model: string;
     newProjectId: string;
   } | null>(null);
+
+  // Load default model on mount
+  useEffect(() => {
+    if (defaultLoaded) return;
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then((groups) => {
+        for (const g of groups) {
+          if (!g.has_api_key) continue;
+          for (const m of g.models) {
+            if (m.is_default) {
+              setSelectedModel(m.model_id);
+              setSelectedProviderId(g.provider_id);
+              setDefaultLoaded(true);
+              return;
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [defaultLoaded]);
 
   useEffect(() => {
     // Load message history from server
@@ -116,7 +138,29 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
             const relPath = workspaceIdx >= 0
               ? pathParts.slice(workspaceIdx + 1).join("/")
               : pathParts[pathParts.length - 1];
-            setPreviewFile(relPath);
+
+            // Wait for file to exist before opening preview
+            // (tool_use message is sent before file write completes)
+            const checkFileExists = async (retries: number = 5): Promise<boolean> => {
+              for (let i = 0; i < retries; i++) {
+                try {
+                  const res = await fetch(`/api/projects/${projectId}/files/${relPath}`, {
+                    method: "HEAD",
+                  });
+                  if (res.ok) return true;
+                } catch {
+                  // File doesn't exist yet
+                }
+                await new Promise((resolve) => setTimeout(resolve, 300));
+              }
+              return false;
+            };
+
+            checkFileExists().then((exists) => {
+              if (exists) {
+                setPreviewFile(relPath);
+              }
+            });
           }
         }
       }
@@ -246,9 +290,17 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           <span className="font-medium truncate">Project: {projectId}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition" title="Settings">
-            <Settings className="w-5 h-5 text-zinc-400" />
-          </Link>
+          {/* Model selector in header */}
+          <div className="flex items-center gap-2 px-2">
+            <ModelSelector
+              value={selectedModel}
+              providerId={selectedProviderId}
+              onChange={(modelId, providerId) => {
+                setSelectedModel(modelId);
+                setSelectedProviderId(providerId);
+              }}
+            />
+          </div>
           <button
             onClick={() => setShowConfigPanel(!showConfigPanel)}
             className={`p-2 rounded-lg transition ${
@@ -378,16 +430,6 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
               {/* Input */}
               <div className="p-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2 px-4 py-1">
-                  <ModelSelector
-                    value={selectedModel}
-                    providerId={selectedProviderId}
-                    onChange={(modelId, providerId) => {
-                      setSelectedModel(modelId);
-                      setSelectedProviderId(providerId);
-                    }}
-                  />
-                </div>
                 <div className="flex gap-2 max-w-4xl mx-auto">
                   <input
                     type="text"
