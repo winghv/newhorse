@@ -19,4 +19,6 @@ class Message(Base):
     message_type = Column(String(32), default="chat")  # chat, tool_use, system
     content = Column(Text, nullable=True)
     metadata_json = Column(JSON, nullable=True)
+    model_id = Column(String(128), nullable=True)
+    provider_id = Column(String(8), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

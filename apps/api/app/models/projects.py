@@ -19,6 +19,8 @@ class Project(Base):
     status = Column(String(32), default="active")
     preferred_cli = Column(String(64), default="hello")
     selected_model = Column(String(64), default="claude-sonnet-4-5-20250929")
+    override_provider_id = Column(String(8), nullable=True)
+    override_api_key = Column(Text, nullable=True)  # Fernet-encrypted
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
