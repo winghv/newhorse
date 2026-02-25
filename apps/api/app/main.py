@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import projects_router, chat_router, agents_router, files_router, preview_router, activity_router, skills_router
 from app.core import settings, configure_logging, ui
 from app.db import Base, engine
+from app.db.migrate import run_migrations
+from app.db.seed import seed_providers
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,12 @@ async def on_startup():
     # Create database tables
     Base.metadata.create_all(bind=engine)
     ui.success("Database initialized", "Startup")
+
+    # Run lightweight migrations (add columns to existing tables)
+    run_migrations()
+
+    # Seed built-in providers
+    seed_providers()
 
     # Ensure projects directory exists
     os.makedirs(settings.projects_root, exist_ok=True)
