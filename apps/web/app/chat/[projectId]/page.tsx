@@ -235,6 +235,9 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           <span className="font-medium truncate">Project: {projectId}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition" title="Settings">
+            <Settings className="w-5 h-5 text-zinc-400" />
+          </Link>
           <button
             onClick={() => setShowConfigPanel(!showConfigPanel)}
             className={`p-2 rounded-lg transition ${

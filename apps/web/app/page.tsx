@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Trash2,
   Bot,
@@ -13,6 +14,7 @@ import {
   ArrowUp,
   Check,
   User,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -260,6 +262,13 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
+      {/* Top nav */}
+      <div className="absolute top-0 right-0 p-4 z-10">
+        <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition-colors" title="Settings">
+          <Settings className="w-5 h-5 text-zinc-400" />
+        </Link>
+      </div>
+
       {/* ── Hero: Create Project ── */}
       <section className="relative overflow-hidden">
         {/* Background glow */}
