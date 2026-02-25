@@ -8,5 +8,7 @@ from .files import router as files_router
 from .preview import router as preview_router
 from .activity import router as activity_router
 from .skills import router as skills_router
+from .providers import router as providers_router
+from .models import router as models_router
 
-__all__ = ["projects_router", "chat_router", "agents_router", "files_router", "preview_router", "activity_router", "skills_router"]
+__all__ = ["projects_router", "chat_router", "agents_router", "files_router", "preview_router", "activity_router", "skills_router", "providers_router", "models_router"]

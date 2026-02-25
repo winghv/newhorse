@@ -15,6 +15,7 @@ import { isPreviewable } from "@/components/PreviewPanel";
 import { AgentConfig } from "@/components/AgentConfig";
 import { toast } from "sonner";
 import { AgentCreatedModal } from "@/components/AgentCreatedModal";
+import ModelSelector from "@/components/ModelSelector";
 
 interface Message {
   id: string;
@@ -38,6 +39,8 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedProviderId, setSelectedProviderId] = useState<string>("");
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [agentModalData, setAgentModalData] = useState<{
     name: string;
@@ -77,7 +80,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           type: "chat",
         };
         setMessages((prev) => [...prev, userMessage]);
-        ws.send(JSON.stringify({ content: initialMessage }));
+        ws.send(JSON.stringify({ content: initialMessage, model: selectedModel || undefined, provider_id: selectedProviderId || undefined }));
         setIsLoading(true);
       }
     };
@@ -176,7 +179,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     setMessages((prev) => [...prev, userMessage]);
 
     // Send to server
-    wsRef.current.send(JSON.stringify({ content: input }));
+    wsRef.current.send(JSON.stringify({ content: input, model: selectedModel || undefined, provider_id: selectedProviderId || undefined }));
     setInput("");
     setIsLoading(true);
   };
@@ -243,6 +246,9 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           <span className="font-medium truncate">Project: {projectId}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition" title="Settings">
+            <Settings className="w-5 h-5 text-zinc-400" />
+          </Link>
           <button
             onClick={() => setShowConfigPanel(!showConfigPanel)}
             className={`p-2 rounded-lg transition ${
@@ -341,6 +347,12 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                       )}
                     </div>
 
+                    {message.role !== "user" && message.metadata?.provider_name && (
+                      <span className="text-xs text-zinc-600 mt-1 block">
+                        {message.metadata.provider_name} · {message.metadata.model || message.metadata?.model_id || ""}
+                      </span>
+                    )}
+
                     {message.role === "user" && (
                       <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center flex-shrink-0">
                         <User className="w-4 h-4" />
@@ -366,6 +378,16 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
               {/* Input */}
               <div className="p-4 border-t border-zinc-800">
+                <div className="flex items-center gap-2 px-4 py-1">
+                  <ModelSelector
+                    value={selectedModel}
+                    providerId={selectedProviderId}
+                    onChange={(modelId, providerId) => {
+                      setSelectedModel(modelId);
+                      setSelectedProviderId(providerId);
+                    }}
+                  />
+                </div>
                 <div className="flex gap-2 max-w-4xl mx-auto">
                   <input
                     type="text"

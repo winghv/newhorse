@@ -19,6 +19,7 @@ from app.common.types import AgentType
 from app.core.config import settings
 from app.core.terminal_ui import ui
 from app.services.cli.config_loader import load_agent_config, save_user_template, save_project_config
+from app.services.cli.runners.router import ProviderRouter
 
 router = APIRouter()
 
@@ -103,6 +104,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
 
             content = message_data.get("content", "")
             model = message_data.get("model")
+            provider_id = message_data.get("provider_id")
 
             if not content:
                 continue
@@ -155,37 +157,93 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                 if "claude_session_id" in data:
                     session_store[project_id] = data["claude_session_id"]
 
+            # Resolve provider and model
+            resolved = ProviderRouter.resolve(
+                model_id=model,
+                provider_id=provider_id,
+                project_id=project_id,
+            )
+
+            runner = ProviderRouter.get_runner(resolved) if resolved else None
+
             # Stream responses
             session_id = str(uuid.uuid4())
             try:
-                async for msg in agent.execute_with_streaming(
-                    instruction=content,
-                    project_id=project_id,
-                    log_callback=log_callback,
-                    session_id=session_id,
-                    claude_session_id=claude_session_id,
-                    model=model,
-                    agent_type=agent_type,
-                ):
-                    await manager.send_message({
-                        "id": msg.id,
-                        "role": msg.role,
-                        "content": msg.content,
-                        "type": msg.message_type,
-                        "metadata": msg.metadata_json,
-                        "created_at": msg.created_at.isoformat() if msg.created_at else None,
-                    }, project_id)
+                if runner:
+                    # Non-Anthropic path: use runner directly
+                    async for msg in runner.stream_response(
+                        instruction=content,
+                        project_id=project_id,
+                        session_id=session_id,
+                        model=resolved["model_id"],
+                        system_prompt=None,
+                        cwd=os.path.join(settings.projects_root, project_id),
+                    ):
+                        msg.model_id = resolved["model_id"]
+                        msg.provider_id = resolved["provider_id"]
+                        if msg.metadata_json is None:
+                            msg.metadata_json = {}
+                        msg.metadata_json["provider_name"] = resolved["provider_name"]
 
-                    # Persist assistant/system messages to database
-                    db = SessionLocal()
-                    try:
-                        db.add(msg)
-                        db.commit()
-                    except Exception as e:
-                        db.rollback()
-                        ui.error(f"Failed to save message: {e}", "Chat")
-                    finally:
-                        db.close()
+                        await manager.send_message({
+                            "id": msg.id,
+                            "role": msg.role,
+                            "content": msg.content,
+                            "type": msg.message_type,
+                            "metadata": msg.metadata_json,
+                            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                        }, project_id)
+
+                        db = SessionLocal()
+                        try:
+                            db.add(msg)
+                            db.commit()
+                        except Exception as e:
+                            db.rollback()
+                            ui.error(f"Failed to save message: {e}", "Chat")
+                        finally:
+                            db.close()
+                else:
+                    # Anthropic path: use Claude Agent SDK via agent
+                    if resolved and resolved["protocol"] == "anthropic":
+                        if resolved["api_key"]:
+                            os.environ["ANTHROPIC_API_KEY"] = resolved["api_key"]
+                        if resolved["base_url"]:
+                            os.environ["ANTHROPIC_BASE_URL"] = resolved["base_url"]
+
+                    async for msg in agent.execute_with_streaming(
+                        instruction=content,
+                        project_id=project_id,
+                        log_callback=log_callback,
+                        session_id=session_id,
+                        claude_session_id=claude_session_id,
+                        model=resolved["model_id"] if resolved else model,
+                        agent_type=agent_type,
+                    ):
+                        if resolved:
+                            msg.model_id = resolved["model_id"]
+                            msg.provider_id = resolved["provider_id"]
+                            if msg.metadata_json and isinstance(msg.metadata_json, dict):
+                                msg.metadata_json["provider_name"] = resolved["provider_name"]
+
+                        await manager.send_message({
+                            "id": msg.id,
+                            "role": msg.role,
+                            "content": msg.content,
+                            "type": msg.message_type,
+                            "metadata": msg.metadata_json,
+                            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                        }, project_id)
+
+                        db = SessionLocal()
+                        try:
+                            db.add(msg)
+                            db.commit()
+                        except Exception as e:
+                            db.rollback()
+                            ui.error(f"Failed to save message: {e}", "Chat")
+                        finally:
+                            db.close()
             except Exception as agent_err:
                 ui.error(f"Agent execution failed: {agent_err}", "Chat")
                 # Clear stale session so next message starts fresh

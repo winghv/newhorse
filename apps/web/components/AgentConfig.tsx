@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SkillManager } from "./SkillManager";
+import ModelSelector from "@/components/ModelSelector";
 
 interface AgentTemplate {
   id: string;
@@ -32,12 +33,6 @@ interface AgentConfigProps {
   onConfigChange?: (config: AgentConfigData) => void;
   className?: string;
 }
-
-const AVAILABLE_MODELS = [
-  { id: "claude-sonnet-4-5-20250929", name: "Sonnet 4.5", description: "平衡速度和质量" },
-  { id: "claude-opus-4-5-20251101", name: "Opus 4.5", description: "最强大的模型" },
-  { id: "claude-3-5-haiku-20241022", name: "Haiku 3.5", description: "快速响应" },
-];
 
 export function AgentConfig({ projectId, onConfigChange, className }: AgentConfigProps) {
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
@@ -212,17 +207,10 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
         </div>
         <div>
           <label className="block text-sm text-zinc-400 mb-1">模型</label>
-          <select
+          <ModelSelector
             value={config.model}
-            onChange={(e) => setConfig({ ...config, model: e.target.value })}
-            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg focus:outline-none focus:border-blue-500"
-          >
-            {AVAILABLE_MODELS.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
+            onChange={(modelId, _providerId) => setConfig({ ...config, model: modelId })}
+          />
         </div>
       </div>
 

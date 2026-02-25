@@ -29,6 +29,8 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     selected_model: Optional[str] = None
+    override_provider_id: Optional[str] = None
+    override_api_key: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -38,6 +40,7 @@ class ProjectResponse(BaseModel):
     status: str
     preferred_cli: str
     selected_model: str
+    override_provider_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -95,12 +98,20 @@ def update_project(project_id: str, updates: ProjectUpdate, db: Session = Depend
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    data = updates.model_dump(exclude_unset=True)
+
     if updates.name is not None:
         project.name = updates.name
     if updates.description is not None:
         project.description = updates.description
     if updates.selected_model is not None:
         project.selected_model = updates.selected_model
+    if "override_provider_id" in data:
+        project.override_provider_id = data["override_provider_id"]
+    if "override_api_key" in data:
+        from app.services.crypto import encrypt_api_key
+        raw_key = data["override_api_key"]
+        project.override_api_key = encrypt_api_key(raw_key) if raw_key else None
 
     db.commit()
     db.refresh(project)

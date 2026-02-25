@@ -17,3 +17,17 @@ class AgentType(str, Enum):
             if item.value == value:
                 return item
         return None
+
+
+class ProviderProtocol(str, Enum):
+    """Supported provider API protocols"""
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    # Future: GEMINI = "gemini"
+
+    @classmethod
+    def from_value(cls, value: str):
+        for item in cls:
+            if item.value == value:
+                return item
+        return None

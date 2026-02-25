@@ -86,6 +86,9 @@ class Settings(BaseModel):
     # Async DB
     use_async_db: bool = os.getenv("USE_ASYNC_DB", "true").lower() in ("true", "1", "yes")
 
+    # Encryption
+    encryption_key: str = os.getenv("ENCRYPTION_KEY", "")
+
     # Project root path
     project_root: str = str(PROJECT_ROOT)
 
