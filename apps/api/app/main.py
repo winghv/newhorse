@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import projects_router, chat_router, agents_router, files_router, preview_router, activity_router, skills_router
+from app.api import projects_router, chat_router, agents_router, files_router, preview_router, activity_router, skills_router, providers_router, models_router
 from app.core import settings, configure_logging, ui
 from app.db import Base, engine
 from app.db.migrate import run_migrations
@@ -44,6 +44,8 @@ app.include_router(files_router, prefix="/api/projects", tags=["files"])
 app.include_router(preview_router, prefix="/api/preview", tags=["preview"])
 app.include_router(activity_router, prefix="/api/activity", tags=["activity"])
 app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
+app.include_router(providers_router, prefix="/api/providers", tags=["providers"])
+app.include_router(models_router, prefix="/api/models", tags=["models"])
 
 
 @app.get("/health")
