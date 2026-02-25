@@ -383,7 +383,7 @@ export default function ProviderSettings() {
               <div className="flex items-center gap-2 min-w-0">
                 <span className="font-medium text-sm truncate">{provider.name}</span>
                 {provider.is_builtin && (
-                  <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" title="Built-in provider" />
+                  <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                 )}
               </div>
 
