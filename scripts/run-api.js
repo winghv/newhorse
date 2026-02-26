@@ -4,6 +4,8 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const apiDir = path.join(__dirname, '..', 'apps', 'api');
 
 // Check if virtual environment exists
