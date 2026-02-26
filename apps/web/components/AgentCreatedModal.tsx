@@ -1,7 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { X, Sparkles, ArrowRight, MessageSquare } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Sparkles, ArrowRight, MessageSquare, ChevronDown } from "lucide-react";
+
+interface Model {
+  id: string;
+  model_id: string;
+  display_name: string;
+}
+
+interface ProviderGroup {
+  provider_id: string;
+  provider_name: string;
+  has_api_key: boolean;
+  models: Model[];
+}
 
 interface AgentCreatedModalProps {
   isOpen: boolean;
@@ -12,12 +25,6 @@ interface AgentCreatedModalProps {
   onConfirm: (data: { name: string; description: string; model: string }) => void;
   onCancel: () => void;
 }
-
-const MODEL_OPTIONS = [
-  { value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
-];
 
 export function AgentCreatedModal({
   isOpen,
@@ -31,6 +38,44 @@ export function AgentCreatedModal({
   const [name, setName] = useState(agentName);
   const [description, setDescription] = useState(agentDescription);
   const [model, setModel] = useState(agentModel);
+  const [providerGroups, setProviderGroups] = useState<ProviderGroup[]>([]);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+    if (showModelDropdown) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [showModelDropdown]);
+
+  // Fetch available models
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then(setProviderGroups)
+      .catch(() => {});
+  }, [isOpen]);
+
+  // Filter to providers with API key
+  const availableGroups = providerGroups.filter((g) => g.has_api_key);
+
+  // Find current model display name
+  const currentModelName = (() => {
+    for (const g of availableGroups) {
+      for (const m of g.models) {
+        if (m.model_id === model) return m.display_name;
+      }
+    }
+    return model;
+  })();
 
   if (!isOpen) return null;
 
@@ -89,21 +134,48 @@ export function AgentCreatedModal({
           </div>
 
           {/* Model */}
-          <div>
+          <div className="relative" ref={modelDropdownRef}>
             <label className="block text-sm font-medium text-zinc-400 mb-1.5">
               模型
             </label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition"
+            <button
+              type="button"
+              onClick={() => setShowModelDropdown(!showModelDropdown)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition"
             >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              <span className="truncate">{currentModelName}</span>
+              <ChevronDown className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+            </button>
+            {showModelDropdown && (
+              <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg">
+                {availableGroups.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-zinc-500">No providers configured</div>
+                ) : (
+                  availableGroups.map((g) => (
+                    <div key={g.provider_id}>
+                      <div className="px-3 py-1.5 text-xs font-medium text-zinc-500 uppercase bg-zinc-900/50">
+                        {g.provider_name}
+                      </div>
+                      {g.models.map((m) => (
+                        <button
+                          key={`${g.provider_id}-${m.model_id}`}
+                          type="button"
+                          onClick={() => {
+                            setModel(m.model_id);
+                            setShowModelDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 ${
+                            m.model_id === model ? "text-blue-400 bg-zinc-700/50" : "text-zinc-300"
+                          }`}
+                        >
+                          {m.display_name}
+                        </button>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 

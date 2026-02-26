@@ -315,6 +315,8 @@ def verify_provider(provider_id: str, db: Session = Depends(get_db)):
             kwargs = {"api_key": plain_key}
             if provider.base_url:
                 kwargs["base_url"] = provider.base_url
+                # Third-party proxies may need Authorization header instead of x-api-key
+                kwargs["default_headers"] = {"Authorization": f"Bearer {plain_key}"}
 
             client = anthropic.Anthropic(**kwargs)
             client.messages.create(
