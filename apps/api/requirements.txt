@@ -20,6 +20,7 @@ claude-agent-sdk==0.1.4
 
 # Multi-provider support
 openai>=1.30
+anthropic>=0.25.0
 cryptography>=42.0
 
 # Utils
