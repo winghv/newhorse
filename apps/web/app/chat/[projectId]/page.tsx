@@ -32,6 +32,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [showFileTree, setShowFileTree] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -166,10 +167,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       }
 
       // Stop loading when session completes
-      if (message.type === "session_complete" || message.type === "paused") {
+      if (message.type === "session_complete" || message.type === "stopped") {
         setIsLoading(false);
-        if (message.type === "paused") {
-          toast.info("Execution paused. Send a message to continue.");
+        setIsStopping(false);
+        if (message.type === "stopped") {
+          toast.info("Execution stopped. Send a message to continue.");
         }
       }
 
@@ -228,9 +230,13 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     setIsLoading(true);
   };
 
-  const handlePause = () => {
+  const handleStop = () => {
+    console.log("[DEBUG] handleStop called", { wsRef: !!wsRef.current, isConnected, isLoading });
     if (!wsRef.current || !isConnected || !isLoading) return;
-    wsRef.current.send(JSON.stringify({ action: "pause" }));
+    setIsStopping(true);
+    const msg = JSON.stringify({ action: "stop" });
+    console.log("[DEBUG] Sending stop action:", msg);
+    wsRef.current.send(msg);
   };
 
   const handleAgentConfirm = async (data: { name: string; description: string; model: string }) => {
@@ -442,15 +448,21 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                   />
                   {isLoading ? (
                     <button
-                      onClick={handlePause}
-                      disabled={!isConnected}
-                      className="px-4 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
-                      title="Pause execution"
+                      onClick={handleStop}
+                      disabled={!isConnected || isStopping}
+                      className={`px-4 py-3 ${isStopping ? 'bg-zinc-600' : 'bg-red-600 hover:bg-red-700'} disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition flex items-center gap-2`}
+                      title={isStopping ? "Stopping..." : "Stop execution"}
                     >
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="6" y="4" width="4" height="16" rx="1" />
-                        <rect x="14" y="4" width="4" height="16" rx="1" />
-                      </svg>
+                      {isStopping ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-sm">Stopping...</span>
+                        </>
+                      ) : (
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                      )}
                     </button>
                   ) : (
                     <button

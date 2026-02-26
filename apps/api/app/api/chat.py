@@ -66,6 +66,9 @@ session_store: dict[str, str] = {}
 # Track currently executing agent per project
 executing_agent: dict[str, object] = {}
 
+# Import cancelled projects from shared state
+from app.core.execution_state import cancelled_projects
+
 
 @router.websocket("/{project_id}")
 async def websocket_endpoint(websocket: WebSocket, project_id: str):
@@ -77,29 +80,47 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             data = await websocket.receive_text()
             message_data = json.loads(data)
 
-            # Handle pause action
-            if message_data.get("action") == "pause":
+            # Handle stop action
+            if message_data.get("action") == "stop":
+                print(f"[DEBUG] Stop action received for project: {project_id}")
+                print(f"[DEBUG] executing_agent keys: {list(executing_agent.keys())}")
+                # Mark project as cancelled
+                cancelled_projects.add(project_id)
                 if project_id in executing_agent:
                     try:
+                        print(f"[DEBUG] Calling interrupt() for project: {project_id}")
                         await executing_agent[project_id].interrupt()
-                        ui.info(f"Execution paused for project: {project_id}", "Chat")
+                        print(f"[DEBUG] Interrupt completed for project: {project_id}")
+                        ui.info(f"Execution stopped for project: {project_id}", "Chat")
                         await manager.send_message({
                             "id": str(uuid.uuid4()),
                             "role": "system",
-                            "content": "⏸️ Execution paused",
-                            "type": "paused",
-                            "metadata": {"can_resume": True},
+                            "content": "⏹️ Execution stopped",
+                            "type": "stopped",
+                            "metadata": {"can_resume": False},
                             "created_at": datetime.utcnow().isoformat(),
                         }, project_id)
                     except Exception as e:
-                        ui.error(f"Failed to pause execution: {e}", "Chat")
+                        print(f"[DEBUG] Failed to stop execution: {e}")
+                        ui.error(f"Failed to stop execution: {e}", "Chat")
                         await manager.send_message({
                             "id": str(uuid.uuid4()),
                             "role": "system",
-                            "content": f"Failed to pause: {e}",
+                            "content": f"Failed to stop: {e}",
                             "type": "error",
                             "created_at": datetime.utcnow().isoformat(),
                         }, project_id)
+                else:
+                    print(f"[DEBUG] project_id not in executing_agent, checking cancelled flag")
+                    # Even if no agent, send stopped message if we marked it cancelled
+                    await manager.send_message({
+                        "id": str(uuid.uuid4()),
+                        "role": "system",
+                        "content": "⏹️ Execution stopped",
+                        "type": "stopped",
+                        "metadata": {"can_resume": False},
+                        "created_at": datetime.utcnow().isoformat(),
+                    }, project_id)
                 continue
 
             content = message_data.get("content", "")
@@ -140,7 +161,9 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             agent = agent_manager.get_agent(AgentType.HELLO)
 
             # Track executing agent for pause support
+            print(f"[DEBUG] Storing agent for project: {project_id}")
             executing_agent[project_id] = agent
+            print(f"[DEBUG] executing_agent after store: {list(executing_agent.keys())}")
 
             # Get or create session
             claude_session_id = session_store.get(project_id)
@@ -275,8 +298,9 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                 finally:
                     db.close()
             finally:
-                # Clear executing agent reference
+                # Clear executing agent reference and cancelled flag
                 executing_agent.pop(project_id, None)
+                cancelled_projects.discard(project_id)
 
             # Post-processing: if system-agent, check for newly generated config
             if agent_type == "system-agent":

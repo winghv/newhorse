@@ -12,6 +12,9 @@ from app.models.messages import Message
 from app.core.terminal_ui import ui
 from .base_runner import BaseRunner
 
+# Import cancelled projects from shared state
+from app.core.execution_state import cancelled_projects
+
 
 class OpenAIRunner(BaseRunner):
     """Runner for OpenAI-compatible APIs."""
@@ -54,6 +57,7 @@ class OpenAIRunner(BaseRunner):
         start = time.time()
         full_content = ""
         last_chunk = None
+        was_cancelled = False
 
         try:
             stream = client.chat.completions.create(
@@ -63,6 +67,12 @@ class OpenAIRunner(BaseRunner):
             )
 
             for chunk in stream:
+                # Check if project was cancelled
+                if project_id in cancelled_projects:
+                    was_cancelled = True
+                    cancelled_projects.discard(project_id)
+                    break
+
                 last_chunk = chunk
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
@@ -111,6 +121,20 @@ class OpenAIRunner(BaseRunner):
                 role="system",
                 message_type="error",
                 content=f"Model error: {e}",
+                metadata_json={"cli_type": "openai_runner", "model": model},
+                session_id=session_id,
+                created_at=datetime.utcnow(),
+            )
+
+        # Handle cancelled case
+        if was_cancelled:
+            ui.info(f"OpenAI runner cancelled for project: {project_id}", "Runner")
+            yield Message(
+                id=str(uuid.uuid4()),
+                project_id=project_id,
+                role="system",
+                message_type="stopped",
+                content="⏹️ Execution stopped",
                 metadata_json={"cli_type": "openai_runner", "model": model},
                 session_id=session_id,
                 created_at=datetime.utcnow(),
