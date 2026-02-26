@@ -10,7 +10,7 @@ const proc = spawn('next', ['dev', '--turbo'], {
 
 // Open browser after a short delay
 setTimeout(() => {
-  const url = 'http://localhost:3000';
+  const url = 'http://localhost:3999';
   const platform = process.platform;
 
   if (platform === 'darwin') {

@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "dev:no-open": "next dev --turbo",
+    "dev": "PORT=3999 node scripts/dev.js",
+    "dev:no-open": "PORT=3999 next dev --turbo",
     "build": "next build",
     "start": "next start"
   },
