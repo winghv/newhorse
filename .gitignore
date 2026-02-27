@@ -15,4 +15,6 @@ CLAUDE.md
 .worktrees/
 docs/plans/*
 *.tsbuildinfo
+dist/
+*.egg-info/
 .claude/
