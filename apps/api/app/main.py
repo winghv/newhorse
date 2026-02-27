@@ -20,11 +20,38 @@ logger = logging.getLogger(__name__)
 # Configure logging
 configure_logging()
 
+# OpenAPI tag descriptions for Swagger UI grouping
+openapi_tags = [
+    {"name": "projects", "description": "Manage project workspaces"},
+    {"name": "chat", "description": "Real-time chat and message history"},
+    {"name": "agents", "description": "Agent templates and configuration"},
+    {"name": "files", "description": "File operations within project workspaces"},
+    {"name": "preview", "description": "Code preview and rendering"},
+    {"name": "activity", "description": "Recent activity feed"},
+    {"name": "skills", "description": "Skill management"},
+    {"name": "providers", "description": "AI provider configuration"},
+    {"name": "models", "description": "Model selection and management"},
+]
+
 # Create FastAPI app
 app = FastAPI(
     title="Newhorse API",
-    description="AI Agent Development Platform",
+    description=(
+        "AI Agent Development Platform based on Claude Agent SDK.\n\n"
+        "## Features\n\n"
+        "- **Project Management** -- Create and manage isolated agent workspaces\n"
+        "- **Real-time Chat** -- WebSocket-powered streaming conversations with AI agents\n"
+        "- **Multi-Provider** -- Connect Anthropic, OpenAI, and custom LLM providers\n"
+        "- **Agent Templates** -- Pre-built and user-defined agent configurations\n"
+        "- **Skill System** -- Extensible skill plugins for agent capabilities\n"
+        "- **File Browser** -- In-browser file tree and editor for project files\n"
+        "- **Live Preview** -- Serve and preview generated HTML/CSS/JS in real time\n"
+    ),
     version="1.0.0",
+    license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=openapi_tags,
 )
 
 # CORS middleware
