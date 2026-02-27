@@ -152,7 +152,7 @@ class BaseCLI(ABC):
         try:
             async for msg in self._run_streaming(
                 options, processed_instruction, project_id, session_id,
-                cli_model, is_clear_command, log_callback,
+                cli_model, is_clear_command, log_callback, locale,
             ):
                 if msg.role == "assistant" and msg.message_type == "chat":
                     got_assistant_content = True
@@ -168,7 +168,7 @@ class BaseCLI(ABC):
                 options.resume = None
                 async for msg in self._run_streaming(
                     options, processed_instruction, project_id, session_id,
-                    cli_model, is_clear_command, log_callback,
+                    cli_model, is_clear_command, log_callback, locale,
                 ):
                     yield msg
                 return
@@ -182,7 +182,7 @@ class BaseCLI(ABC):
 
             async for msg in self._run_streaming(
                 options, processed_instruction, project_id, session_id,
-                cli_model, is_clear_command, log_callback,
+                cli_model, is_clear_command, log_callback, locale,
             ):
                 yield msg
         elif held_result_msg:
@@ -197,6 +197,7 @@ class BaseCLI(ABC):
         cli_model: str,
         is_clear_command: bool,
         log_callback: Callable[[dict], Any],
+        locale: str = "en",
     ) -> AsyncGenerator[Message, None]:
         """Run a single streaming session with the Claude Agent SDK."""
         async with ClaudeSDKClient(options=options) as client:
