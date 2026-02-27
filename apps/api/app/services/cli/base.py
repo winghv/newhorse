@@ -27,6 +27,7 @@ from app.models.messages import Message
 from app.common.types import AgentType
 from app.core.terminal_ui import ui
 from app.core.config import settings
+from app.common.messages import get_message
 
 
 # Model mapping from friendly names to full model IDs
@@ -89,6 +90,7 @@ class BaseCLI(ABC):
         permission_mode: PermissionMode = "default",
         user_config: Optional[Dict[str, str]] = None,
         agent_type: Optional[str] = None,
+        locale: str = "en",
     ) -> AsyncGenerator[Message, None]:
         """Execute instruction using Claude Agent SDK with streaming."""
 
@@ -220,7 +222,7 @@ class BaseCLI(ABC):
                             project_id=project_id,
                             role="system",
                             message_type="system",
-                            content="✨ Conversation cleared, new session started",
+                            content=get_message("session_cleared", locale),
                             metadata_json={"cli_type": self.cli_type.value, "subtype": "init"},
                             session_id=session_id,
                             created_at=datetime.utcnow(),
@@ -232,7 +234,7 @@ class BaseCLI(ABC):
                         project_id=project_id,
                         role="system",
                         message_type="system",
-                        content=f"Agent initialized (Model: {cli_model})",
+                        content=get_message("agent_initialized", locale, model=cli_model),
                         metadata_json={"cli_type": self.cli_type.value, "hidden_from_ui": True},
                         session_id=session_id,
                         created_at=datetime.utcnow(),

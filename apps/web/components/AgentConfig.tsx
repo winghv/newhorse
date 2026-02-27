@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { SkillManager } from "./SkillManager";
 import ModelSelector from "@/components/ModelSelector";
 
@@ -35,6 +36,7 @@ interface AgentConfigProps {
 }
 
 export function AgentConfig({ projectId, onConfigChange, className }: AgentConfigProps) {
+  const t = useTranslations('agentConfig');
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [config, setConfig] = useState<AgentConfigData>({
@@ -94,10 +96,10 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
         setConfig(data.config);
         setSelectedTemplate(templateId);
         setShowTemplateDropdown(false);
-        toast.success(`已应用模板: ${data.config.name}`);
+        toast.success(t('templateApplied', { name: data.config.name }));
       }
     } catch (err) {
-      toast.error("应用模板失败");
+      toast.error(t('templateFailed'));
     }
   };
 
@@ -112,14 +114,14 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       });
 
       if (res.ok) {
-        toast.success("配置已保存");
+        toast.success(t('configSaved'));
         setConfigSource(`project:${projectId}`);
         onConfigChange?.(config);
       } else {
         throw new Error("Save failed");
       }
     } catch (err) {
-      toast.error("保存配置失败");
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -149,16 +151,16 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-blue-500" />
-          <h3 className="font-medium">Agent 配置</h3>
+          <h3 className="font-medium">{t('title')}</h3>
         </div>
         <div className="text-xs text-zinc-500">
-          来源: {configSource.startsWith("project:") ? "项目配置" : configSource.startsWith("template:") ? "模板" : "默认"}
+          {t('source')}: {configSource.startsWith("project:") ? t('sourceProject') : configSource.startsWith("template:") ? t('sourceTemplate') : t('sourceDefault')}
         </div>
       </div>
 
       {/* Template selector */}
       <div className="relative">
-        <label className="block text-sm text-zinc-400 mb-1">模板</label>
+        <label className="block text-sm text-zinc-400 mb-1">{t('templateLabel')}</label>
         <button
           onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
           className="w-full flex items-center justify-between px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg hover:border-zinc-600 transition"
@@ -166,25 +168,25 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
           <span className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-yellow-500" />
             {selectedTemplate
-              ? templates.find((t) => t.id === selectedTemplate)?.name || "选择模板"
-              : "选择模板应用..."}
+              ? templates.find((tpl) => tpl.id === selectedTemplate)?.name || t('selectTemplate')
+              : t('selectTemplatePlaceholder')}
           </span>
           <ChevronDown className="w-4 h-4" />
         </button>
 
         {showTemplateDropdown && (
           <div className="absolute z-10 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg overflow-hidden">
-            {templates.map((template) => (
+            {templates.map((tpl) => (
               <button
-                key={template.id}
-                onClick={() => applyTemplate(template.id)}
+                key={tpl.id}
+                onClick={() => applyTemplate(tpl.id)}
                 className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition flex items-center justify-between"
               >
                 <div>
-                  <div className="font-medium">{template.name}</div>
-                  <div className="text-xs text-zinc-500">{template.description}</div>
+                  <div className="font-medium">{tpl.name}</div>
+                  <div className="text-xs text-zinc-500">{tpl.description}</div>
                 </div>
-                {selectedTemplate === template.id && (
+                {selectedTemplate === tpl.id && (
                   <Check className="w-4 h-4 text-green-500" />
                 )}
               </button>
@@ -196,17 +198,17 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       {/* Name & Description */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm text-zinc-400 mb-1">名称</label>
+          <label className="block text-sm text-zinc-400 mb-1">{t('nameLabel')}</label>
           <input
             type="text"
             value={config.name}
             onChange={(e) => setConfig({ ...config, name: e.target.value })}
             className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg focus:outline-none focus:border-blue-500"
-            placeholder="Agent 名称"
+            placeholder={t('namePlaceholder')}
           />
         </div>
         <div>
-          <label className="block text-sm text-zinc-400 mb-1">模型</label>
+          <label className="block text-sm text-zinc-400 mb-1">{t('modelLabel')}</label>
           <ModelSelector
             value={config.model}
             onChange={(modelId, _providerId) => setConfig({ ...config, model: modelId })}
@@ -215,25 +217,25 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       </div>
 
       <div>
-        <label className="block text-sm text-zinc-400 mb-1">描述</label>
+        <label className="block text-sm text-zinc-400 mb-1">{t('descriptionLabel')}</label>
         <input
           type="text"
           value={config.description}
           onChange={(e) => setConfig({ ...config, description: e.target.value })}
           className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg focus:outline-none focus:border-blue-500"
-          placeholder="简短描述 Agent 的用途"
+          placeholder={t('descriptionPlaceholder')}
         />
       </div>
 
       {/* System Prompt */}
       <div>
-        <label className="block text-sm text-zinc-400 mb-1">System Prompt</label>
+        <label className="block text-sm text-zinc-400 mb-1">{t('systemPromptLabel')}</label>
         <textarea
           value={config.system_prompt}
           onChange={(e) => setConfig({ ...config, system_prompt: e.target.value })}
           rows={8}
           className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-sm resize-y"
-          placeholder="定义 Agent 的角色、能力和行为..."
+          placeholder={t('systemPromptPlaceholder')}
         />
       </div>
 
@@ -255,7 +257,7 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
         ) : (
           <Save className="w-4 h-4" />
         )}
-        保存配置
+        {t('saveConfig')}
       </button>
     </div>
   );

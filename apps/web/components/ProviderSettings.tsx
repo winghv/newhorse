@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import {
   CheckCircle,
   XCircle,
@@ -51,6 +52,8 @@ const emptyModelForm: ModelFormState = {
 /* ── Component ── */
 
 export default function ProviderSettings() {
+  const t = useTranslations('providers');
+
   const [providers, setProviders] = useState<Provider[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
@@ -82,7 +85,7 @@ export default function ProviderSettings() {
         setProviders(data);
       }
     } catch {
-      toast.error("Failed to load providers");
+      toast.error(t('loadFailed'));
     }
   };
 
@@ -94,7 +97,7 @@ export default function ProviderSettings() {
 
   const createProvider = async () => {
     if (!newProvider.name.trim() || !newProvider.base_url.trim()) {
-      toast.error("Name and base URL are required");
+      toast.error(t('nameRequired'));
       return;
     }
     try {
@@ -104,16 +107,16 @@ export default function ProviderSettings() {
         body: JSON.stringify(newProvider),
       });
       if (res.ok) {
-        toast.success("Provider created");
+        toast.success(t('providerCreated'));
         setShowAddProvider(false);
         setNewProvider({ name: "", protocol: "openai", base_url: "", api_key: "" });
         fetchProviders();
       } else {
         const err = await res.json();
-        toast.error(err.detail || "Failed to create provider");
+        toast.error(err.detail || t('createFailed'));
       }
     } catch {
-      toast.error("Failed to create provider");
+      toast.error(t('createFailed'));
     }
   };
 
@@ -125,30 +128,30 @@ export default function ProviderSettings() {
         body: JSON.stringify(patch),
       });
       if (res.ok) {
-        toast.success("Provider updated");
+        toast.success(t('providerUpdated'));
         fetchProviders();
       } else {
         const err = await res.json();
-        toast.error(err.detail || "Failed to update provider");
+        toast.error(err.detail || t('updateFailed'));
       }
     } catch {
-      toast.error("Failed to update provider");
+      toast.error(t('updateFailed'));
     }
   };
 
   const deleteProvider = async (id: string) => {
-    if (!confirm("Delete this provider and all its models?")) return;
+    if (!confirm(t('deleteProviderConfirm'))) return;
     try {
       const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
       if (res.ok) {
-        toast.success("Provider deleted");
+        toast.success(t('providerDeleted'));
         if (expandedId === id) setExpandedId(null);
         fetchProviders();
       } else {
-        toast.error("Failed to delete provider");
+        toast.error(t('deleteFailed'));
       }
     } catch {
-      toast.error("Failed to delete provider");
+      toast.error(t('deleteFailed'));
     }
   };
 
@@ -159,13 +162,13 @@ export default function ProviderSettings() {
       const data = await res.json();
       setVerifyResults((prev) => ({ ...prev, [id]: data.success }));
       if (data.success) {
-        toast.success("Connection verified");
+        toast.success(t('connectionVerified'));
       } else {
-        toast.error(data.error || "Verification failed");
+        toast.error(data.error || t('verificationFailed'));
       }
     } catch {
       setVerifyResults((prev) => ({ ...prev, [id]: false }));
-      toast.error("Verification failed");
+      toast.error(t('verificationFailed'));
     } finally {
       setVerifying(null);
     }
@@ -196,7 +199,7 @@ export default function ProviderSettings() {
 
   const saveModel = async () => {
     if (!modelDialogProvider || !modelForm.model_id.trim()) {
-      toast.error("Model ID is required");
+      toast.error(t('modelIdRequired'));
       return;
     }
 
@@ -212,10 +215,10 @@ export default function ProviderSettings() {
           }
         );
         if (res.ok) {
-          toast.success("Model updated");
+          toast.success(t('modelUpdated'));
         } else {
           const err = await res.json();
-          toast.error(err.detail || "Failed to update model");
+          toast.error(err.detail || t('modelUpdateFailed'));
           return;
         }
       } else {
@@ -229,40 +232,40 @@ export default function ProviderSettings() {
           }
         );
         if (res.ok) {
-          toast.success("Model added");
+          toast.success(t('modelAdded'));
         } else {
           const err = await res.json();
-          toast.error(err.detail || "Failed to add model");
+          toast.error(err.detail || t('modelAddFailed'));
           return;
         }
       }
       closeModelDialog();
       fetchProviders();
     } catch {
-      toast.error("Failed to save model");
+      toast.error(t('modelSaveFailed'));
     }
   };
 
   const deleteModel = async (providerId: string, modelId: string) => {
-    if (!confirm("Delete this model?")) return;
+    if (!confirm(t('deleteModelConfirm'))) return;
     try {
       const res = await fetch(`/api/providers/${providerId}/models/${modelId}`, {
         method: "DELETE",
       });
       if (res.ok) {
-        toast.success("Model deleted");
+        toast.success(t('modelDeleted'));
         fetchProviders();
       } else {
-        toast.error("Failed to delete model");
+        toast.error(t('modelDeleteFailed'));
       }
     } catch {
-      toast.error("Failed to delete model");
+      toast.error(t('modelDeleteFailed'));
     }
   };
 
   /* ── Helpers ── */
 
-  const maskKey = (hasKey: boolean) => (hasKey ? "sk-••••••••" : "Not set");
+  const maskKey = (hasKey: boolean) => (hasKey ? "sk-••••••••" : t('notSet'));
 
   const toggleExpanded = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
@@ -274,23 +277,23 @@ export default function ProviderSettings() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Providers</h2>
+        <h2 className="text-xl font-semibold">{t('title')}</h2>
         <button
           onClick={() => setShowAddProvider(!showAddProvider)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
         >
           <Plus className="w-4 h-4" />
-          Add Custom Provider
+          {t('addCustom')}
         </button>
       </div>
 
       {/* Add provider form */}
       {showAddProvider && (
         <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3">
-          <h3 className="text-sm font-medium text-zinc-300">New Custom Provider</h3>
+          <h3 className="text-sm font-medium text-zinc-300">{t('newProvider')}</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Name</label>
+              <label className="block text-xs text-zinc-500 mb-1">{t('nameLabel')}</label>
               <input
                 type="text"
                 value={newProvider.name}
@@ -300,19 +303,19 @@ export default function ProviderSettings() {
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Protocol</label>
+              <label className="block text-xs text-zinc-500 mb-1">{t('protocolLabel')}</label>
               <select
                 value={newProvider.protocol}
                 onChange={(e) => setNewProvider({ ...newProvider, protocol: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-blue-500 transition"
               >
-                <option value="openai">OpenAI Compatible</option>
-                <option value="anthropic">Anthropic</option>
+                <option value="openai">{t('protocolOpenAI')}</option>
+                <option value="anthropic">{t('protocolAnthropic')}</option>
               </select>
             </div>
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Base URL</label>
+            <label className="block text-xs text-zinc-500 mb-1">{t('baseUrlLabel')}</label>
             <input
               type="text"
               value={newProvider.base_url}
@@ -322,7 +325,7 @@ export default function ProviderSettings() {
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">API Key</label>
+            <label className="block text-xs text-zinc-500 mb-1">{t('apiKeyLabel')}</label>
             <input
               type="password"
               value={newProvider.api_key}
@@ -336,13 +339,13 @@ export default function ProviderSettings() {
               onClick={() => setShowAddProvider(false)}
               className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-300 transition"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               onClick={createProvider}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition"
             >
-              Create
+              {t('create')}
             </button>
           </div>
         </div>
@@ -409,7 +412,7 @@ export default function ProviderSettings() {
               <div className="px-4 pb-4 pt-2 border-t border-zinc-800 space-y-4">
                 {/* API Key */}
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1">API Key</label>
+                  <label className="block text-xs text-zinc-500 mb-1">{t('apiKeyLabel')}</label>
                   <div className="flex gap-2">
                     <input
                       type="password"
@@ -430,7 +433,7 @@ export default function ProviderSettings() {
                       }}
                       className="px-3 py-2 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-lg transition"
                     >
-                      Save
+                      {t('save')}
                     </button>
                   </div>
                 </div>
@@ -438,7 +441,7 @@ export default function ProviderSettings() {
                 {/* Base URL (non-builtin only) */}
                 {!provider.is_builtin && (
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1">Base URL</label>
+                    <label className="block text-xs text-zinc-500 mb-1">{t('baseUrlLabel')}</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -458,7 +461,7 @@ export default function ProviderSettings() {
                         }}
                         className="px-3 py-2 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-lg transition"
                       >
-                        Save
+                        {t('save')}
                       </button>
                     </div>
                   </div>
@@ -467,17 +470,17 @@ export default function ProviderSettings() {
                 {/* Models */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-zinc-500">Models</label>
+                    <label className="text-xs text-zinc-500">{t('models')}</label>
                     <button
                       onClick={() => openModelDialog(provider.id)}
                       className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition"
                     >
                       <Plus className="w-3 h-3" />
-                      Add Model
+                      {t('addModel')}
                     </button>
                   </div>
                   {provider.models.length === 0 ? (
-                    <div className="text-sm text-zinc-600 py-2">No models configured</div>
+                    <div className="text-sm text-zinc-600 py-2">{t('noModels')}</div>
                   ) : (
                     <div className="space-y-1">
                       {provider.models.map((model) => (
@@ -526,7 +529,7 @@ export default function ProviderSettings() {
                     ) : (
                       <CheckCircle className="w-3.5 h-3.5" />
                     )}
-                    Verify Connection
+                    {t('verifyConnection')}
                   </button>
                   {!provider.is_builtin && (
                     <button
@@ -534,7 +537,7 @@ export default function ProviderSettings() {
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/30 rounded-lg transition ml-auto"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Delete Provider
+                      {t('deleteProvider')}
                     </button>
                   )}
                 </div>
@@ -545,7 +548,7 @@ export default function ProviderSettings() {
 
         {providers.length === 0 && (
           <div className="text-center py-8 text-zinc-500 text-sm">
-            No providers configured. Add a custom provider to get started.
+            {t('noProviders')}
           </div>
         )}
       </div>
@@ -555,11 +558,11 @@ export default function ProviderSettings() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-md mx-4 rounded-xl bg-zinc-900 border border-zinc-700 p-6 space-y-4 shadow-2xl">
             <h3 className="text-lg font-medium">
-              {editingModel ? "Edit Model" : "Add Model"}
+              {editingModel ? t('editModel') : t('addModel')}
             </h3>
 
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Model ID</label>
+              <label className="block text-xs text-zinc-500 mb-1">{t('modelIdLabel')}</label>
               <input
                 type="text"
                 value={modelForm.model_id}
@@ -570,7 +573,7 @@ export default function ProviderSettings() {
             </div>
 
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">Display Name</label>
+              <label className="block text-xs text-zinc-500 mb-1">{t('displayNameLabel')}</label>
               <input
                 type="text"
                 value={modelForm.display_name}
@@ -587,7 +590,7 @@ export default function ProviderSettings() {
                 onChange={(e) => setModelForm({ ...modelForm, is_default: e.target.checked })}
                 className="w-4 h-4 rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
               />
-              Set as default model
+              {t('setDefault')}
             </label>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -595,13 +598,13 @@ export default function ProviderSettings() {
                 onClick={closeModelDialog}
                 className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300 transition"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={saveModel}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition"
               >
-                {editingModel ? "Save Changes" : "Add Model"}
+                {editingModel ? t('saveChanges') : t('addModel')}
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { X, Sparkles, ArrowRight, MessageSquare, ChevronDown } from "lucide-react";
 
 interface Model {
@@ -35,6 +36,7 @@ export function AgentCreatedModal({
   onConfirm,
   onCancel,
 }: AgentCreatedModalProps) {
+  const t = useTranslations('agentCreated');
   const [name, setName] = useState(agentName);
   const [description, setDescription] = useState(agentDescription);
   const [model, setModel] = useState(agentModel);
@@ -93,8 +95,8 @@ export function AgentCreatedModal({
               <Sparkles className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-lg">Agent 已生成</h2>
-              <p className="text-xs text-zinc-500">确认信息后开始使用</p>
+              <h2 className="font-semibold text-lg">{t('title')}</h2>
+              <p className="text-xs text-zinc-500">{t('subtitle')}</p>
             </div>
           </div>
           <button
@@ -110,7 +112,7 @@ export function AgentCreatedModal({
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-              名称
+              {t('name')}
             </label>
             <input
               type="text"
@@ -123,7 +125,7 @@ export function AgentCreatedModal({
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-              描述
+              {t('description')}
             </label>
             <textarea
               value={description}
@@ -136,7 +138,7 @@ export function AgentCreatedModal({
           {/* Model */}
           <div className="relative" ref={modelDropdownRef}>
             <label className="block text-sm font-medium text-zinc-400 mb-1.5">
-              模型
+              {t('model')}
             </label>
             <button
               type="button"
@@ -149,7 +151,7 @@ export function AgentCreatedModal({
             {showModelDropdown && (
               <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg">
                 {availableGroups.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-zinc-500">No providers configured</div>
+                  <div className="px-3 py-2 text-sm text-zinc-500">{t('noProviders')}</div>
                 ) : (
                   availableGroups.map((g) => (
                     <div key={g.provider_id}>
@@ -186,13 +188,13 @@ export function AgentCreatedModal({
             className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition"
           >
             <MessageSquare className="w-4 h-4" />
-            继续修改
+            {t('continueEditing')}
           </button>
           <button
             onClick={() => onConfirm({ name, description, model })}
             className="flex items-center gap-2 px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 rounded-lg transition"
           >
-            确认并前往
+            {t('confirmAndGo')}
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { isPreviewable } from "./FilePreview";
+import { useTranslations } from "next-intl";
 
 interface FileNode {
   name: string;
@@ -129,6 +130,7 @@ export function FileTreeDrawer({
   onClose,
   onFileSelect,
 }: FileTreeDrawerProps) {
+  const t = useTranslations('fileTree');
   const [tree, setTree] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -193,19 +195,19 @@ export function FileTreeDrawer({
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between px-3 py-3 border-b border-zinc-800">
-          <span className="text-sm font-medium text-zinc-200">Project Files</span>
+          <span className="text-sm font-medium text-zinc-200">{t('title')}</span>
           <div className="flex items-center gap-1">
             <button
               onClick={fetchTree}
               className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-              title="Refresh"
+              title={t('refresh')}
             >
               <RefreshCw className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
               className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-              title="Close"
+              title={t('close')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -220,7 +222,7 @@ export function FileTreeDrawer({
             </div>
           ) : tree.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-zinc-500">
-              No files yet
+              {t('noFiles')}
             </div>
           ) : (
             tree.map((node) => (
