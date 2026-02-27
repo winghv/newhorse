@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
+import { Link } from "@/i18n/routing";
+import { useTranslations, useLocale } from "next-intl";
 import { ArrowLeft, Send, Bot, User, Loader2, FolderOpen, Settings, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -28,6 +29,8 @@ interface Message {
 
 export default function ChatPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
+  const t = useTranslations('chat');
+  const locale = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
@@ -85,7 +88,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
     // Connect WebSocket
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/chat/${projectId}`);
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/chat/${projectId}?locale=${locale}`);
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -171,7 +174,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         setIsLoading(false);
         setIsStopping(false);
         if (message.type === "stopped") {
-          toast.info("Execution stopped. Send a message to continue.");
+          toast.info(t('stopped'));
         }
       }
 
@@ -263,10 +266,10 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       }
     }
 
-    toast.success(`Agent "${data.name}" 已确认，正在跳转...`);
+    toast.success(t('agentConfirmed', { name: data.name }));
     setShowAgentModal(false);
     setTimeout(() => {
-      window.location.href = `/chat/${agentModalData.newProjectId}`;
+      window.location.href = `/${locale}/chat/${agentModalData.newProjectId}`;
     }, 800);
   };
 
@@ -287,7 +290,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
           className={`p-2 rounded-lg transition ${
             showFileTree ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
           }`}
-          title="Project files"
+          title={t('projectFiles')}
         >
           <FolderOpen className="w-5 h-5" />
         </button>
@@ -312,7 +315,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
             className={`p-2 rounded-lg transition ${
               showConfigPanel ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
             }`}
-            title="Agent 配置"
+            title={t('agentConfig')}
           >
             <Settings className="w-5 h-5" />
           </button>
@@ -321,7 +324,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
               isConnected ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"
             }`}
           >
-            {isConnected ? "Connected" : "Disconnected"}
+            {isConnected ? t('connected') : t('disconnected')}
           </div>
         </div>
       </header>
@@ -349,7 +352,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                 {messages.length === 0 && (
                   <div className="text-center py-12 text-zinc-500">
                     <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>Start a conversation with your AI agent</p>
+                    <p>{t('emptyChat')}</p>
                   </div>
                 )}
 
@@ -442,7 +445,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !isLoading && sendMessage()}
-                    placeholder={isLoading ? "Agent is executing..." : "Type a message..."}
+                    placeholder={isLoading ? t('executing') : t('placeholder')}
                     className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
                     disabled={!isConnected || isLoading}
                   />
@@ -451,12 +454,12 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                       onClick={handleStop}
                       disabled={!isConnected || isStopping}
                       className={`px-4 py-3 ${isStopping ? 'bg-zinc-600' : 'bg-red-600 hover:bg-red-700'} disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition flex items-center gap-2`}
-                      title={isStopping ? "Stopping..." : "Stop execution"}
+                      title={isStopping ? t('stopping') : "Stop execution"}
                     >
                       {isStopping ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin" />
-                          <span className="text-sm">Stopping...</span>
+                          <span className="text-sm">{t('stopping')}</span>
                         </>
                       ) : (
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -499,7 +502,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         {showConfigPanel && (
           <div className="w-80 md:w-96 border-l border-zinc-800 bg-zinc-900/50 flex-shrink-0 flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-zinc-800">
-              <h3 className="font-medium text-sm">Agent 配置</h3>
+              <h3 className="font-medium text-sm">{t('agentConfig')}</h3>
               <button
                 onClick={() => setShowConfigPanel(false)}
                 className="p-1 hover:bg-zinc-800 rounded transition"

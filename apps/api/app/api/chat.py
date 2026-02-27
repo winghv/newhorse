@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.terminal_ui import ui
 from app.services.cli.config_loader import load_agent_config, save_user_template, save_project_config
 from app.services.cli.runners.router import ProviderRouter
+from app.common.messages import get_message
 
 router = APIRouter()
 
@@ -74,6 +75,7 @@ from app.core.execution_state import cancelled_projects
 async def websocket_endpoint(websocket: WebSocket, project_id: str):
     """WebSocket endpoint for real-time chat."""
     await manager.connect(websocket, project_id)
+    locale = websocket.query_params.get("locale", "en")
 
     try:
         while True:
@@ -95,7 +97,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                         await manager.send_message({
                             "id": str(uuid.uuid4()),
                             "role": "system",
-                            "content": "⏹️ Execution stopped",
+                            "content": f"⏹️ {get_message('execution_stopped', locale)}",
                             "type": "stopped",
                             "metadata": {"can_resume": False},
                             "created_at": datetime.utcnow().isoformat(),
@@ -116,7 +118,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                     await manager.send_message({
                         "id": str(uuid.uuid4()),
                         "role": "system",
-                        "content": "⏹️ Execution stopped",
+                        "content": f"⏹️ {get_message('execution_stopped', locale)}",
                         "type": "stopped",
                         "metadata": {"can_resume": False},
                         "created_at": datetime.utcnow().isoformat(),
@@ -201,6 +203,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                         model=resolved["model_id"],
                         system_prompt=None,
                         cwd=os.path.join(settings.projects_root, project_id),
+                        locale=locale,
                     ):
                         msg.model_id = resolved["model_id"]
                         msg.provider_id = resolved["provider_id"]
@@ -242,6 +245,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                         claude_session_id=claude_session_id,
                         model=resolved["model_id"] if resolved else model,
                         agent_type=agent_type,
+                        locale=locale,
                     ):
                         if resolved:
                             msg.model_id = resolved["model_id"]
@@ -351,7 +355,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                         await manager.send_message({
                             "id": f"agent-created-{template_id}",
                             "role": "system",
-                            "content": f"Agent \"{config.name}\" 已创建",
+                            "content": get_message("agent_created", locale, name=config.name),
                             "type": "agent_created",
                             "metadata": {
                                 "template_id": template_id,

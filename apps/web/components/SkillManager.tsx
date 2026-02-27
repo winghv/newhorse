@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Upload, Trash2, Check, RefreshCw, Globe, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 interface Skill {
   id: string;
@@ -19,6 +20,7 @@ interface SkillManagerProps {
 }
 
 export function SkillManager({ projectId, selectedSkills, onToggleSkill }: SkillManagerProps) {
+  const t = useTranslations('skills');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -57,14 +59,14 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
       );
 
       if (res.ok) {
-        toast.success("Skill 上传成功");
+        toast.success(t('uploadSuccess'));
         await fetchSkills();
       } else {
-        const err = await res.json().catch(() => ({ detail: "上传失败" }));
-        toast.error(err.detail || "上传失败");
+        const err = await res.json().catch(() => ({ detail: t('uploadFailed') }));
+        toast.error(err.detail || t('uploadFailed'));
       }
     } catch {
-      toast.error("上传失败");
+      toast.error(t('uploadFailed'));
     } finally {
       setUploading(false);
       // Reset so the same file can be re-selected
@@ -73,21 +75,21 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
   };
 
   const handleDelete = async (skill: Skill) => {
-    if (!confirm(`确认删除 Skill「${skill.name}」？`)) return;
+    if (!confirm(t('deleteConfirm', { name: skill.name }))) return;
     try {
       const res = await fetch(
         `/api/skills/${skill.id}?scope=project&project_id=${projectId}`,
         { method: "DELETE" }
       );
       if (res.ok) {
-        toast.success("Skill 已删除");
+        toast.success(t('deleted'));
         await fetchSkills();
       } else {
-        const err = await res.json().catch(() => ({ detail: "删除失败" }));
-        toast.error(err.detail || "删除失败");
+        const err = await res.json().catch(() => ({ detail: t('deleteFailed') }));
+        toast.error(err.detail || t('deleteFailed'));
       }
     } catch {
-      toast.error("删除失败");
+      toast.error(t('deleteFailed'));
     }
   };
 
@@ -96,12 +98,12 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
 
   return (
     <div>
-      <label className="block text-sm text-zinc-400 mb-2">Skills</label>
+      <label className="block text-sm text-zinc-400 mb-2">{t('label')}</label>
 
       {loading ? (
         <div className="flex items-center gap-2 text-zinc-500 text-sm py-2">
           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-          加载中...
+          {t('loading')}
         </div>
       ) : (
         <>
@@ -110,7 +112,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
             <div className="mb-3">
               <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1.5">
                 <Globe className="w-3 h-3" />
-                全局
+                {t('global')}
               </div>
               <div className="flex flex-wrap gap-2">
                 {globalSkills.map((skill) => (
@@ -137,7 +139,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
             <div className="mb-3">
               <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1.5">
                 <FolderOpen className="w-3 h-3" />
-                项目
+                {t('project')}
               </div>
               <div className="flex flex-wrap gap-2">
                 {projectSkills.map((skill) => (
@@ -157,7 +159,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
                     <button
                       onClick={() => handleDelete(skill)}
                       className="p-1 text-zinc-600 hover:text-red-400 transition"
-                      title="删除此 Skill"
+                      title={t('deleteTitle')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -168,7 +170,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
           )}
 
           {skills.length === 0 && (
-            <p className="text-sm text-zinc-600 mb-3">暂无可用 Skill，上传一个 zip 包开始</p>
+            <p className="text-sm text-zinc-600 mb-3">{t('empty')}</p>
           )}
         </>
       )}
@@ -192,7 +194,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
           ) : (
             <Upload className="w-3.5 h-3.5" />
           )}
-          上传 Skill (.zip)
+          {t('uploadButton')}
         </button>
 
         {/* Scope toggle */}
@@ -205,7 +207,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
                 : "text-zinc-500 hover:text-zinc-400"
             }`}
           >
-            项目级
+            {t('projectScope')}
           </button>
           <button
             onClick={() => setUploadScope("global")}
@@ -215,7 +217,7 @@ export function SkillManager({ projectId, selectedSkills, onToggleSkill }: Skill
                 : "text-zinc-500 hover:text-zinc-400"
             }`}
           >
-            全局
+            {t('globalScope')}
           </button>
         </div>
       </div>

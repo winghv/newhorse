@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface Model {
   id: string;
@@ -26,6 +27,7 @@ interface ModelSelectorProps {
 }
 
 export default function ModelSelector({ value, providerId, onChange, className = "" }: ModelSelectorProps) {
+  const t = useTranslations('modelSelector');
   const [groups, setGroups] = useState<ProviderGroup[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export default function ModelSelector({ value, providerId, onChange, className =
         }
       }
     }
-    return value || "Select model";
+    return value || t('selectModel');
   })();
 
   // Filter to only providers with API key configured
@@ -74,7 +76,7 @@ export default function ModelSelector({ value, providerId, onChange, className =
       {open && (
         <div className="absolute z-50 mt-1 w-64 max-h-80 overflow-y-auto rounded-lg bg-zinc-800 border border-zinc-700 shadow-xl">
           {available.length === 0 && (
-            <div className="px-3 py-2 text-sm text-zinc-500">No providers configured</div>
+            <div className="px-3 py-2 text-sm text-zinc-500">{t('noProviders')}</div>
           )}
           {available.map((g) => (
             <div key={g.provider_id}>

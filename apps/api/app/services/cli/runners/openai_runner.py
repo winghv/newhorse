@@ -11,6 +11,7 @@ from openai import OpenAI
 from app.models.messages import Message
 from app.core.terminal_ui import ui
 from .base_runner import BaseRunner
+from app.common.messages import get_message
 
 # Import cancelled projects from shared state
 from app.core.execution_state import cancelled_projects
@@ -28,6 +29,7 @@ class OpenAIRunner(BaseRunner):
         system_prompt: Optional[str] = None,
         cwd: Optional[str] = None,
         history: Optional[List[Dict[str, Any]]] = None,
+        locale: str = "en",
     ) -> AsyncGenerator[Message, None]:
         """Stream chat completion from an OpenAI-compatible API."""
         import time
@@ -134,7 +136,7 @@ class OpenAIRunner(BaseRunner):
                 project_id=project_id,
                 role="system",
                 message_type="stopped",
-                content="⏹️ Execution stopped",
+                content=f"⏹️ {get_message('execution_stopped', locale)}",
                 metadata_json={"cli_type": "openai_runner", "model": model},
                 session_id=session_id,
                 created_at=datetime.utcnow(),

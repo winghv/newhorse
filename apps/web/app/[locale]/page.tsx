@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useRouter } from "@/i18n/routing";
+import { Link } from "@/i18n/routing";
+import { useTranslations } from "next-intl";
 import {
   Trash2,
   Bot,
@@ -17,6 +18,7 @@ import {
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 interface Project {
   id: string;
@@ -43,32 +45,35 @@ interface ActivityItem {
   created_at: string;
 }
 
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "刚刚";
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months} 个月前`;
-  return `${Math.floor(months / 12)} 年前`;
-}
-
-/** Extract a short project name from a description string */
-function generateProjectName(description: string): string {
-  const trimmed = description.trim().replace(/\n+/g, " ");
-  const cut = trimmed.slice(0, 30);
-  const atPunctuation = cut.search(/[，。！？,.!?\n]/);
-  const name =
-    atPunctuation > 4 ? cut.slice(0, atPunctuation) : cut.slice(0, 20);
-  return name.trim() || "新项目";
-}
-
 export default function Home() {
   const router = useRouter();
+  const t = useTranslations('home');
+  const tTime = useTranslations('time');
+  const tActivity = useTranslations('activity');
+
+  const relativeTime = (dateStr: string): string => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return tTime("justNow");
+    if (mins < 60) return tTime("minutesAgo", { count: mins });
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return tTime("hoursAgo", { count: hours });
+    const days = Math.floor(hours / 24);
+    if (days < 30) return tTime("daysAgo", { count: days });
+    const months = Math.floor(days / 30);
+    if (months < 12) return tTime("monthsAgo", { count: months });
+    return tTime("yearsAgo", { count: Math.floor(months / 12) });
+  };
+
+  const generateProjectName = (description: string): string => {
+    const trimmed = description.trim().replace(/\n+/g, " ");
+    const cut = trimmed.slice(0, 30);
+    const atPunctuation = cut.search(/[，。！？,.!?\n]/);
+    const name =
+      atPunctuation > 4 ? cut.slice(0, atPunctuation) : cut.slice(0, 20);
+    return name.trim() || t("newProject");
+  };
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
@@ -119,7 +124,7 @@ export default function Home() {
       const data = await res.json();
       setProjects(data);
     } catch (error) {
-      toast.error("Failed to load projects");
+      toast.error(t("loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -195,28 +200,28 @@ export default function Home() {
 
         setProjects([project, ...projects]);
         setDescription("");
-        toast.success("Project created");
+        toast.success(t("projectCreated"));
 
         router.push(`/chat/${project.id}`);
       }
     } catch (error) {
-      toast.error("Failed to create project");
+      toast.error(t("createFailed"));
     } finally {
       setCreating(false);
     }
   };
 
   const deleteProject = async (id: string) => {
-    if (!confirm("Delete this project?")) return;
+    if (!confirm(t("deleteConfirm"))) return;
 
     try {
       const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
       if (res.ok) {
         setProjects(projects.filter((p) => p.id !== id));
-        toast.success("Project deleted");
+        toast.success(t("projectDeleted"));
       }
     } catch (error) {
-      toast.error("Failed to delete project");
+      toast.error(t("deleteFailed"));
     }
   };
 
@@ -263,8 +268,9 @@ export default function Home() {
   return (
     <main className="min-h-screen">
       {/* Top nav */}
-      <div className="absolute top-0 right-0 p-4 z-10">
-        <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition-colors" title="Settings">
+      <div className="absolute top-0 right-0 p-4 z-10 flex items-center gap-1">
+        <LanguageSwitcher />
+        <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition-colors" title={t("settings:title")}>
           <Settings className="w-5 h-5 text-zinc-400" />
         </Link>
       </div>
@@ -305,13 +311,13 @@ export default function Home() {
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 transition-all duration-300">
               {isAgentMode
-                ? `用 ${selectedAgentInfo!.name} 做什么?`
-                : "你想构建什么 Agent?"}
+                ? t("heroTitleAgent", { name: selectedAgentInfo!.name })
+                : t("heroTitle")}
             </h1>
             <p className="text-zinc-500 text-base transition-all duration-300">
               {isAgentMode
-                ? "描述任务，Agent 将为你执行"
-                : "描述你的想法，AI 帮你实现"}
+                ? t("heroSubtitleAgent")
+                : t("heroSubtitle")}
             </p>
           </div>
 
@@ -347,8 +353,8 @@ export default function Home() {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   isAgentMode
-                    ? `描述你要 ${selectedAgentInfo!.name} 执行的任务...`
-                    : "描述你想要的 Agent，例如：\n帮我创建一个能分析 Python 代码质量并给出优化建议的助手..."
+                    ? t("placeholderAgent", { name: selectedAgentInfo!.name })
+                    : t("placeholder")
                 }
                 rows={3}
                 className={`w-full px-4 py-3 pr-14 bg-zinc-800/60 border rounded-xl text-[15px] leading-relaxed focus:outline-none focus:ring-1 transition placeholder:text-zinc-600 resize-none ${
@@ -383,22 +389,22 @@ export default function Home() {
                 {/* Built-in templates */}
                 {builtinTemplates.length > 0 && (
                   <>
-                    <span className="text-[11px] text-zinc-600">模板</span>
-                    {builtinTemplates.map((t) => (
+                    <span className="text-[11px] text-zinc-600">{t("templates")}</span>
+                    {builtinTemplates.map((tpl) => (
                       <button
-                        key={t.id}
+                        key={tpl.id}
                         type="button"
-                        onClick={() => toggleAgent(t.id)}
+                        onClick={() => toggleAgent(tpl.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150 cursor-pointer ${
-                          selectedAgent === t.id
+                          selectedAgent === tpl.id
                             ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
                             : "bg-zinc-800/40 border-zinc-700/30 text-zinc-500 hover:border-zinc-600 hover:text-zinc-400"
                         }`}
-                        title={t.description}
+                        title={tpl.description}
                       >
                         <Bot className="w-3 h-3" />
-                        {t.name}
-                        {selectedAgent === t.id && (
+                        {tpl.name}
+                        {selectedAgent === tpl.id && (
                           <Check className="w-3 h-3" />
                         )}
                       </button>
@@ -415,23 +421,23 @@ export default function Home() {
                 {userAgents.length > 0 && (
                   <>
                     <span className="text-[11px] text-zinc-600">
-                      {builtinTemplates.length > 0 ? "我的" : "我的 Agent"}
+                      {builtinTemplates.length > 0 ? t("mine") : t("myAgents")}
                     </span>
-                    {userAgents.map((t) => (
+                    {userAgents.map((tpl) => (
                       <button
-                        key={t.id}
+                        key={tpl.id}
                         type="button"
-                        onClick={() => toggleAgent(t.id)}
+                        onClick={() => toggleAgent(tpl.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150 cursor-pointer ${
-                          selectedAgent === t.id
+                          selectedAgent === tpl.id
                             ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
                             : "bg-zinc-800/40 border-zinc-700/30 text-zinc-500 hover:border-zinc-600 hover:text-zinc-400"
                         }`}
-                        title={t.description}
+                        title={tpl.description}
                       >
                         <User className="w-3 h-3" />
-                        {t.name}
-                        {selectedAgent === t.id && (
+                        {tpl.name}
+                        {selectedAgent === tpl.id && (
                           <Check className="w-3 h-3" />
                         )}
                       </button>
@@ -444,7 +450,7 @@ export default function Home() {
 
           {/* Keyboard hint */}
           <p className="text-center text-[11px] text-zinc-700 mt-3">
-            Enter 发送 · Shift + Enter 换行
+            {t("inputHint")}
           </p>
         </div>
       </section>
@@ -474,7 +480,7 @@ export default function Home() {
               >
                 <div className="flex items-center gap-2 text-sm text-zinc-400">
                   <History className="w-4 h-4" />
-                  <span>继续上次</span>
+                  <span>{t("continueLastSession")}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium group-hover:text-blue-400 transition-colors">
@@ -496,7 +502,7 @@ export default function Home() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索项目..."
+                    placeholder={t("searchPlaceholder")}
                     className="w-full pl-9 pr-3 py-2 bg-zinc-900/80 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500/50 text-sm transition"
                   />
                 </div>
@@ -507,7 +513,7 @@ export default function Home() {
                   className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900/80 rounded-lg border border-zinc-800 hover:border-zinc-700 text-sm text-zinc-400 hover:text-zinc-300 transition cursor-pointer shrink-0"
                 >
                   <ArrowUpDown className="w-3.5 h-3.5" />
-                  {sortBy === "created" ? "最近创建" : "名称排序"}
+                  {sortBy === "created" ? t("sortRecent") : t("sortName")}
                 </button>
               </div>
             )}
@@ -557,7 +563,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="text-center py-8 text-zinc-500 text-sm">
-                没有匹配的项目
+                {t("noMatch")}
               </div>
             )}
 
@@ -567,7 +573,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 mb-3">
                   <Activity className="w-4 h-4 text-zinc-500" />
                   <h3 className="text-sm font-medium text-zinc-400">
-                    最近活动
+                    {t("recentActivity")}
                   </h3>
                 </div>
                 <div className="space-y-1">
@@ -588,7 +594,7 @@ export default function Home() {
                         {item.project_name}
                       </span>
                       <span className="text-sm text-zinc-600 truncate">
-                        {item.role === "user" ? "发送了消息" : "回复了消息"}
+                        {item.role === "user" ? tActivity("sentMessage") : tActivity("replied")}
                         {item.content ? ` — ${item.content}` : ""}
                       </span>
                       <span className="text-xs text-zinc-700 shrink-0 ml-auto">

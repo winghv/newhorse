@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { MonacoEditor, getLanguageFromFilename } from "./MonacoEditor";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 interface PreviewPanelProps {
   projectId: string;
@@ -32,6 +33,7 @@ export function isPreviewable(filename: string): boolean {
 }
 
 export function PreviewPanel({ projectId, filePath, onClose, isDragging, defaultMode }: PreviewPanelProps) {
+  const t = useTranslations('preview');
   const [tabMode, setTabMode] = useState<"preview" | "edit">(defaultMode || "preview");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [code, setCode] = useState<string>("");
@@ -76,7 +78,7 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
       setOriginalCode(content);
     } catch (err) {
       console.error("Failed to load code:", err);
-      toast.error("Failed to load file content");
+      toast.error(t('loadFailed'));
     } finally {
       setCodeLoading(false);
     }
@@ -101,10 +103,10 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
       });
       if (!res.ok) throw new Error("Save failed");
       setOriginalCode(code);
-      toast.success("File saved");
+      toast.success(t('fileSaved'));
     } catch (err) {
       console.error("Failed to save:", err);
-      toast.error("Failed to save file");
+      toast.error(t('saveFailed'));
     } finally {
       setSaveLoading(false);
     }
@@ -161,10 +163,10 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
                   ? "bg-zinc-700 text-white"
                   : "text-zinc-500 hover:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
               }`}
-              title="Preview"
+              title={t('preview')}
             >
               <Eye className="w-3.5 h-3.5" />
-              <span>Preview</span>
+              <span>{t('preview')}</span>
             </button>
             <button
               onClick={() => handleTabChange("edit")}
@@ -173,10 +175,10 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
                   ? "bg-zinc-700 text-white"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
-              title="Edit"
+              title={t('edit')}
             >
               <Code className="w-3.5 h-3.5" />
-              <span>Edit</span>
+              <span>{t('edit')}</span>
               {isDirty && <Circle className="w-2 h-2 fill-blue-500 text-blue-500" />}
             </button>
           </div>
@@ -187,7 +189,7 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
               onClick={handleSave}
               disabled={saveLoading}
               className="p-1.5 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
-              title="Save (Cmd+S)"
+              title={t('save')}
             >
               {saveLoading ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -200,21 +202,21 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
           <button
             onClick={handleRefresh}
             className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            title="Refresh"
+            title={t('refresh')}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={handleOpenExternal}
             className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            title="Open in new tab"
+            title={t('openNewTab')}
           >
             <ExternalLink className="w-4 h-4" />
           </button>
           <button
             onClick={handleToggleFullscreen}
             className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
           >
             {isFullscreen ? (
               <Minimize2 className="w-4 h-4" />
@@ -225,7 +227,7 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
           <button
             onClick={onClose}
             className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            title="Close preview"
+            title={t('closePreview')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -241,7 +243,7 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center z-10">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-8 h-8 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin" />
-                  <span className="text-sm text-zinc-500">Loading preview...</span>
+                  <span className="text-sm text-zinc-500">{t('loadingPreview')}</span>
                 </div>
               </div>
             )}
@@ -264,7 +266,7 @@ export function PreviewPanel({ projectId, filePath, onClose, isDragging, default
               <div className="flex items-center justify-center h-full bg-zinc-950">
                 <div className="flex flex-col items-center gap-2">
                   <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
-                  <span className="text-sm text-zinc-500">Loading file...</span>
+                  <span className="text-sm text-zinc-500">{t('loadingFile')}</span>
                 </div>
               </div>
             ) : (
