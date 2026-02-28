@@ -13,7 +13,11 @@
     "ensure:env": "node scripts/setup-env.js",
     "ensure:venv": "node scripts/setup-venv.js",
     "setup": "npm install",
-    "doctor": "node scripts/doctor.js"
+    "doctor": "node scripts/doctor.js",
+    "test": "npm run test:api",
+    "test:api": "cd apps/api && python -m pytest",
+    "test:api:cov": "cd apps/api && python -m pytest --cov=app --cov-report=term-missing",
+    "test:api:v": "cd apps/api && python -m pytest -v"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1",
