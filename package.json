@@ -14,10 +14,12 @@
     "ensure:venv": "node scripts/setup-venv.js",
     "setup": "npm install",
     "doctor": "node scripts/doctor.js",
-    "test": "npm run test:api",
+    "test": "npm run test:api && npm run test:web",
     "test:api": "cd apps/api && python -m pytest",
     "test:api:cov": "cd apps/api && python -m pytest --cov=app --cov-report=term-missing",
-    "test:api:v": "cd apps/api && python -m pytest -v"
+    "test:api:v": "cd apps/api && python -m pytest -v",
+    "test:web": "cd apps/web && npx vitest run",
+    "test:web:watch": "cd apps/web && npx vitest"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1",
