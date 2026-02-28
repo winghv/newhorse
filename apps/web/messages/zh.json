@@ -22,7 +22,8 @@
     "projectDeleted": "项目已删除",
     "loadFailed": "加载项目失败",
     "createFailed": "创建项目失败",
-    "deleteFailed": "删除项目失败"
+    "deleteFailed": "删除项目失败",
+    "settingsTitle": "设置"
   },
   "time": {
     "justNow": "刚刚",

@@ -22,7 +22,8 @@
     "projectDeleted": "Project deleted",
     "loadFailed": "Failed to load projects",
     "createFailed": "Failed to create project",
-    "deleteFailed": "Failed to delete project"
+    "deleteFailed": "Failed to delete project",
+    "settingsTitle": "Settings"
   },
   "time": {
     "justNow": "Just now",
