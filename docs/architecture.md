@@ -7,12 +7,12 @@ Newhorse follows a clean separation between frontend, backend, and agent logic.
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Web Interface                         │
-│                 Next.js (port 3000)                      │
+│                 Next.js (port 3999)                      │
 └─────────────────────┬───────────────────────────────────┘
                       │ WebSocket / REST
 ┌─────────────────────▼───────────────────────────────────┐
 │                    API Server                            │
-│                 FastAPI (port 8080)                      │
+│                 FastAPI (port 8999)                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      │
 │  │  Projects   │  │    Chat     │  │   Agents    │      │
 │  │    API      │  │    API      │  │    API      │      │

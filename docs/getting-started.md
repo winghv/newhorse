@@ -47,14 +47,14 @@ This command will:
 1. Check and create `.env` if needed
 2. Create Python virtual environment
 3. Install Python dependencies
-4. Start the FastAPI backend on port 8080
-5. Start the Next.js frontend on port 3000
+4. Start the FastAPI backend on port 8999
+5. Start the Next.js frontend on port 3999
 
 ## First Steps
 
 ### 1. Open the Web Interface
 
-Navigate to http://localhost:3000
+Navigate to http://localhost:3999
 
 ### 2. Create a Project
 
@@ -83,7 +83,7 @@ pip install -r requirements.txt
 
 ### WebSocket connection fails
 
-Make sure the backend is running on port 8080. Check the terminal for errors.
+Make sure the backend is running on port 8999. Check the terminal for errors.
 
 ### Claude API errors
 

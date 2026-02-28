@@ -12,13 +12,10 @@ A skill consists of:
 
 ## Creating a Skill
 
-### Step 1: Generate Template
+### Step 1: Create Skill Directory
 
-```bash
-npm run new:skill my-skill
-```
+Create the skill directory under `extensions/skills/`:
 
-Creates:
 ```
 extensions/skills/my-skill/
 ├── SKILL.md

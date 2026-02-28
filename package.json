@@ -13,8 +13,6 @@
     "ensure:env": "node scripts/setup-env.js",
     "ensure:venv": "node scripts/setup-venv.js",
     "setup": "npm install",
-    "new:agent": "node scripts/new-agent.js",
-    "new:skill": "node scripts/new-skill.js",
     "doctor": "node scripts/doctor.js"
   },
   "devDependencies": {

@@ -109,18 +109,18 @@ async function main() {
     // --- Ports ---
     console.log();
     console.log(bold('  Ports'));
-    const port8080Free = await checkPort(8080);
-    if (port8080Free) {
-        pass('Port 8080 is free', 'API server');
+    const port8999Free = await checkPort(8999);
+    if (port8999Free) {
+        pass('Port 8999 is free', 'API server');
     } else {
-        fail('Port 8080 is in use', 'Stop the process using port 8080 or change API_PORT in .env');
+        fail('Port 8999 is in use', 'Stop the process using port 8999 or change API_PORT in .env');
     }
 
-    const port3000Free = await checkPort(3000);
-    if (port3000Free) {
-        pass('Port 3000 is free', 'Web server');
+    const port3999Free = await checkPort(3999);
+    if (port3999Free) {
+        pass('Port 3999 is free', 'Web server');
     } else {
-        fail('Port 3000 is in use', 'Stop the process using port 3000');
+        fail('Port 3999 is in use', 'Stop the process using port 3999');
     }
 
     // --- Files ---

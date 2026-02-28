@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000) — 几秒钟内创建你的第一个 Agent。
+打开 [http://localhost:3999](http://localhost:3999) — 几秒钟内创建你的第一个 Agent。
 
 ## 使用流程
 
@@ -76,22 +76,11 @@ newhorse/
 └── scripts/           → 开发工具
 ```
 
-## 扩展开发
-
-```bash
-npm run new:agent my-agent    # 创建新 Agent
-npm run new:skill my-skill    # 创建新技能
-```
-
-Agent 是 Python 类，技能是 Markdown 文件。就这么简单。
-
-详见 [Agent 开发指南](docs/agent-development.md) 和 [技能开发指南](docs/skill-development.md)。
-
 ## API 文档
 
 后端自动提供交互式 API 文档：
-- **Swagger UI：** [http://localhost:8080/docs](http://localhost:8080/docs)
-- **ReDoc：** [http://localhost:8080/redoc](http://localhost:8080/redoc)
+- **Swagger UI：** [http://localhost:8999/docs](http://localhost:8999/docs)
+- **ReDoc：** [http://localhost:8999/redoc](http://localhost:8999/redoc)
 
 ## 参与贡献
 

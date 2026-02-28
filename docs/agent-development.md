@@ -13,13 +13,9 @@ Agents are specialized AI assistants built on top of the Claude Agent SDK. Each 
 
 ## Creating an Agent
 
-### Step 1: Generate Template
+### Step 1: Create Agent File
 
-```bash
-npm run new:agent my-awesome-agent
-```
-
-This creates `apps/api/app/services/cli/adapters/my_awesome_agent_agent.py`.
+Create a new file at `apps/api/app/services/cli/adapters/my_awesome_agent_agent.py`.
 
 ### Step 2: Register Agent Type
 

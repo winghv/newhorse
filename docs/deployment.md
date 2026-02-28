@@ -152,11 +152,11 @@ gunicorn app.main:app -c gunicorn.conf.py
 
 ```nginx
 upstream api {
-    server localhost:8080;
+    server localhost:8999;
 }
 
 upstream web {
-    server localhost:3000;
+    server localhost:3999;
 }
 
 server {
@@ -183,7 +183,7 @@ server {
 The API provides a health endpoint:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8999/health
 # {"ok": true, "service": "newhorse"}
 ```
 

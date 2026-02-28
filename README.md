@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — create your first agent in seconds.
+Open [http://localhost:3999](http://localhost:3999) — create your first agent in seconds.
 
 ## How It Works
 
@@ -76,22 +76,11 @@ newhorse/
 └── scripts/           → Dev tooling
 ```
 
-## Extend It
-
-```bash
-npm run new:agent my-agent    # Create a new agent
-npm run new:skill my-skill    # Create a new skill
-```
-
-Agents are Python classes. Skills are Markdown files. Simple as that.
-
-See [Agent Development Guide](docs/agent-development.md) and [Skill Development Guide](docs/skill-development.md) for details.
-
 ## API Documentation
 
 The backend auto-serves interactive API docs:
-- **Swagger UI:** [http://localhost:8080/docs](http://localhost:8080/docs)
-- **ReDoc:** [http://localhost:8080/redoc](http://localhost:8080/redoc)
+- **Swagger UI:** [http://localhost:8999/docs](http://localhost:8999/docs)
+- **ReDoc:** [http://localhost:8999/redoc](http://localhost:8999/redoc)
 
 ## Contributing
 
