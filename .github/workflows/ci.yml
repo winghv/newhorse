@@ -72,6 +72,8 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
+      - run: npx playwright install --with-deps
+        working-directory: apps/web
       - run: npm run test:e2e
         working-directory: apps/web
 
