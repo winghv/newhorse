@@ -138,3 +138,21 @@ class TestDeleteProject:
         resp = client.delete("/api/projects/nonexist")
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Project not found"
+
+
+class TestListProjectsEdgeCases:
+    """Edge cases for project listing."""
+
+    def test_pagination(self, client):
+        """Projects should be paginated."""
+        # Create multiple projects
+        for i in range(15):
+            client.post("/api/projects/", json={"name": f"Project {i}"})
+
+        resp = client.get("/api/projects/?limit=5&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 5
+
+        resp = client.get("/api/projects/?limit=5&offset=10")
+        assert len(data) == 5

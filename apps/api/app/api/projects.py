@@ -48,9 +48,9 @@ class ProjectResponse(BaseModel):
 
 
 @router.get("/")
-def list_projects(db: Session = Depends(get_db)):
-    """List all projects."""
-    projects = db.query(Project).order_by(Project.created_at.desc()).all()
+def list_projects(limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+    """List all projects with pagination."""
+    projects = db.query(Project).order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
     return [ProjectResponse.model_validate(p) for p in projects]
 
 
