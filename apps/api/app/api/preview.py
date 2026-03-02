@@ -8,7 +8,7 @@ import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 
 from app.core.config import settings
 from app.core.terminal_ui import ui

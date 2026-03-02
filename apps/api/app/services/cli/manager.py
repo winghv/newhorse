@@ -1,7 +1,7 @@
 """
 Agent Manager - Manages agent lifecycle and routing.
 """
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 
 from app.common.types import AgentType
 from app.core.terminal_ui import ui

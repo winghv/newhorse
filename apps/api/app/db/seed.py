@@ -69,7 +69,7 @@ def seed_providers():
     """Seed built-in providers if they don't exist yet."""
     db: DBSession = SessionLocal()
     try:
-        existing = db.query(Provider).filter(Provider.is_builtin == True).count()
+        existing = db.query(Provider).filter(Provider.is_builtin).count()
         if existing > 0:
             ui.debug(f"Built-in providers already seeded ({existing})", "Seed")
             return

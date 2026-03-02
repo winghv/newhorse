@@ -1,6 +1,5 @@
 """Integration tests for /api/agents/ endpoints."""
 
-import pytest
 
 
 class TestListAgents:

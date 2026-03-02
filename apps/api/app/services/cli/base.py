@@ -16,11 +16,9 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, PermissionMode
 from claude_agent_sdk.types import (
     SystemMessage,
     AssistantMessage,
-    UserMessage,
     ResultMessage,
     TextBlock,
     ToolUseBlock,
-    ToolResultBlock,
 )
 
 from app.models.messages import Message
