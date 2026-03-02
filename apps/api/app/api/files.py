@@ -3,9 +3,8 @@ Files API - File browser endpoints for project files.
 
 Provides read-only file tree browsing and file content viewing.
 """
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

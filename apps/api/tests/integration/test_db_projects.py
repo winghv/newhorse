@@ -1,6 +1,5 @@
 """Database integration tests for Project model."""
 
-import pytest
 from app.models.projects import Project
 
 

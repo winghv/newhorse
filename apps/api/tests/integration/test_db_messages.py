@@ -1,6 +1,5 @@
 """Database integration tests for Message model."""
 
-import pytest
 from app.models.messages import Message
 from app.models.projects import Project
 

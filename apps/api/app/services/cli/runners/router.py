@@ -43,12 +43,12 @@ class ProviderRouter:
             # Step 1: If explicit provider_id given, use it
             provider = None
             if provider_id:
-                provider = db.query(Provider).filter(Provider.id == provider_id, Provider.enabled == True).first()
+                provider = db.query(Provider).filter(Provider.id == provider_id, Provider.enabled).first()
 
             # Step 2: Fall back to project override
             if not provider and project and project.override_provider_id:
                 provider = db.query(Provider).filter(
-                    Provider.id == project.override_provider_id, Provider.enabled == True
+                    Provider.id == project.override_provider_id, Provider.enabled
                 ).first()
 
             # Step 3: If model_id given, find which provider owns it
@@ -56,14 +56,14 @@ class ProviderRouter:
                 pm = db.query(ProviderModel).filter(ProviderModel.model_id == model_id).first()
                 if pm:
                     provider = db.query(Provider).filter(
-                        Provider.id == pm.provider_id, Provider.enabled == True
+                        Provider.id == pm.provider_id, Provider.enabled
                     ).first()
 
             # Step 4: Global default — first enabled provider with a key
             if not provider:
                 provider = db.query(Provider).filter(
-                    Provider.enabled == True,
-                    Provider.api_key != None,
+                    Provider.enabled,
+                    Provider.api_key is not None,
                 ).order_by(Provider.is_builtin.desc()).first()
 
             if not provider:
@@ -78,7 +78,7 @@ class ProviderRouter:
                 else:
                     default_m = db.query(ProviderModel).filter(
                         ProviderModel.provider_id == provider.id,
-                        ProviderModel.is_default == True
+                        ProviderModel.is_default
                     ).first()
                     resolved_model_id = default_m.model_id if default_m else None
 

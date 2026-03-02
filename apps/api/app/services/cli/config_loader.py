@@ -6,7 +6,6 @@ Loads agent configuration with priority:
 2. Global template: extensions/agents/{agent_type}/agent.yaml
 3. Code defaults
 """
-import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
