@@ -83,3 +83,36 @@ def sample_project(client):
     })
     assert resp.status_code == 200
     return resp.json()
+
+
+@pytest.fixture()
+def sample_provider(db_session):
+    """Create a sample provider in the DB."""
+    from app.models.provider import Provider
+    provider = Provider(
+        id="test-provider",
+        name="Test Provider",
+        provider_type="anthropic",
+        api_key="test-key",
+        is_active=True,
+    )
+    db_session.add(provider)
+    db_session.commit()
+    return provider
+
+
+@pytest.fixture()
+def sample_message(db_session, sample_project):
+    """Create a sample message in the DB."""
+    from app.models.messages import Message
+    import uuid
+    message = Message(
+        id=str(uuid.uuid4()),
+        project_id=sample_project["id"],
+        role="user",
+        message_type="chat",
+        content="Hello world",
+    )
+    db_session.add(message)
+    db_session.commit()
+    return message
