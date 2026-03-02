@@ -199,6 +199,33 @@ def save_user_template(config: AgentConfig, template_id: Optional[str] = None) -
     return template_id
 
 
+def delete_user_template(template_id: str) -> bool:
+    """Delete a user-created template.
+
+    Only deletes from data/agents/ (user templates), not builtin templates.
+
+    Args:
+        template_id: Template directory name
+
+    Returns:
+        True if deleted, False if not found or is builtin
+    """
+    import shutil
+
+    # Only delete user templates (data/agents/), never builtin (extensions/agents/)
+    user_path = Path(settings.agents_root) / template_id
+    if not user_path.exists():
+        return False
+
+    try:
+        shutil.rmtree(user_path)
+        ui.success(f"Deleted user template: {template_id}", "ConfigLoader")
+        return True
+    except Exception as e:
+        ui.error(f"Failed to delete template {template_id}: {e}", "ConfigLoader")
+        return False
+
+
 def list_global_templates() -> List[Dict[str, Any]]:
     """List all available agent templates (builtin + user-created)."""
     templates = []

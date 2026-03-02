@@ -12,6 +12,8 @@ from app.services.cli.config_loader import (
     get_template_config,
     load_agent_config,
     save_project_config,
+    save_user_template,
+    delete_user_template,
     AgentConfig,
 )
 from app.core.config import settings
@@ -67,6 +69,75 @@ def get_template(template_id: str):
         "config": config.to_dict(),
         "source": config.config_source,
     }
+
+
+@router.post("/templates")
+def create_template(request: AgentConfigRequest):
+    """Create a new user agent template."""
+    config = AgentConfig(
+        name=request.name,
+        description=request.description,
+        system_prompt=request.system_prompt,
+        skills=request.skills,
+        model=request.model,
+        allowed_tools=request.allowed_tools,
+        config_source="user",
+    )
+
+    template_id = save_user_template(config)
+    ui.success(f"Created template: {template_id}", "AgentsAPI")
+
+    return {
+        "id": template_id,
+        "config": config.to_dict(),
+    }
+
+
+@router.put("/templates/{template_id}")
+def update_template(template_id: str, request: AgentConfigRequest):
+    """Update an existing user template."""
+    existing = get_template_config(template_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
+
+    from pathlib import Path
+    from app.core.config import settings
+    user_path = Path(settings.agents_root) / template_id
+    if not user_path.exists():
+        raise HTTPException(status_code=403, detail="Cannot modify builtin templates")
+
+    config = AgentConfig(
+        name=request.name,
+        description=request.description,
+        system_prompt=request.system_prompt,
+        skills=request.skills,
+        model=request.model,
+        allowed_tools=request.allowed_tools,
+        config_source=f"user:{template_id}",
+    )
+
+    save_user_template(config, template_id=template_id)
+    ui.success(f"Updated template: {template_id}", "AgentsAPI")
+
+    return {
+        "id": template_id,
+        "config": config.to_dict(),
+    }
+
+
+@router.delete("/templates/{template_id}")
+def delete_template(template_id: str):
+    """Delete a user-created template."""
+    success = delete_user_template(template_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Template not found or is builtin: {template_id}"
+        )
+
+    ui.success(f"Deleted template: {template_id}", "AgentsAPI")
+    return {"success": True, "id": template_id}
 
 
 @router.get("/projects/{project_id}/config")
