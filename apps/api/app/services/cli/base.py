@@ -247,23 +247,51 @@ class BaseCLI(ABC):
                             if isinstance(block, TextBlock):
                                 content += block.text
                             elif isinstance(block, ToolUseBlock):
+                                tool_name = block.name
+                                normalized = self._normalize_tool_name(tool_name)
+
+                                # Check if this is AskUserQuestion - we need to pause and get user answer
+                                is_ask_question = normalized == "AskUserQuestion"
+
                                 tool_message = Message(
                                     id=str(uuid.uuid4()),
                                     project_id=project_id,
                                     role="assistant",
                                     message_type="tool_use",
-                                    content=self._create_tool_summary(block.name, block.input),
+                                    content=self._create_tool_summary(tool_name, block.input),
                                     metadata_json={
                                         "cli_type": self.cli_type.value,
-                                        "tool_name": block.name,
+                                        "tool_name": tool_name,
                                         "tool_input": block.input,
                                         "tool_id": block.id,
+                                        "requires_answer": is_ask_question,
                                     },
                                     session_id=session_id,
                                     created_at=datetime.utcnow(),
                                 )
-                                ui.info(self._get_tool_display(block.name, block.input), "")
+                                ui.info(self._get_tool_display(tool_name, block.input), "")
                                 yield tool_message
+
+                                # If it's AskUserQuestion, we need to signal frontend and wait
+                                # For now, yield a waiting message and break the stream
+                                if is_ask_question:
+                                    yield Message(
+                                        id=str(uuid.uuid4()),
+                                        project_id=project_id,
+                                        role="system",
+                                        message_type="waiting_for_answer",
+                                        content=get_message("waiting_for_answer", locale),
+                                        metadata_json={
+                                            "cli_type": self.cli_type.value,
+                                            "tool_id": block.id,
+                                            "tool_input": block.input,
+                                        },
+                                        session_id=session_id,
+                                        created_at=datetime.utcnow(),
+                                    )
+                                    # Store the tool_use info for when answer comes back
+                                    # The chat.py will handle resuming with the answer
+                                    break
 
                     if content and content.strip():
                         yield Message(
@@ -352,6 +380,19 @@ class BaseCLI(ABC):
         elif normalized == "Task":
             desc = tool_input.get("description", "")[:40]
             return f"🤖 **Task** `{desc}`"
+        elif normalized == "AskUserQuestion":
+            questions = tool_input.get("questions", [])
+            if questions:
+                parts = []
+                for q in questions:
+                    text = q.get("question", "")
+                    parts.append(f"❓ **{text}**")
+                    for opt in q.get("options", []):
+                        label = opt.get("label", "")
+                        desc = opt.get("description", "")
+                        parts.append(f"- **{label}**: {desc}" if desc else f"- **{label}**")
+                return "\n".join(parts)
+            return "❓ **AskUserQuestion**"
         else:
             return f"**{tool_name}** `executing...`"
 
@@ -370,6 +411,11 @@ class BaseCLI(ABC):
         elif normalized == "Bash":
             cmd = tool_input.get("command", "").split()[0] if tool_input.get("command") else "command"
             return f"Running {cmd}"
+        elif normalized == "AskUserQuestion":
+            questions = tool_input.get("questions", [])
+            if questions:
+                return f"Asking: {questions[0].get('question', '')[:50]}"
+            return "Asking user question"
         else:
             return f"Using {tool_name}"
 
@@ -383,6 +429,7 @@ class BaseCLI(ABC):
             "search_file_content": "Grep", "grep": "Grep",
             "find_files": "Glob", "glob": "Glob",
             "web_search": "WebSearch", "google_web_search": "WebSearch",
+            "askuserquestion": "AskUserQuestion",
         }
         return mapping.get(tool_name.lower(), tool_name)
 

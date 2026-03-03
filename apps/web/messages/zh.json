@@ -48,7 +48,8 @@
     "agentConfirmed": "Agent「{name}」已确认，正在跳转...",
     "connected": "已连接",
     "disconnected": "未连接",
-    "projectFiles": "项目文件"
+    "projectFiles": "项目文件",
+    "answerPlaceholder": "选择上方选项或输入你的回答..."
   },
   "settings": {
     "title": "设置"

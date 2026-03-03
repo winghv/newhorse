@@ -53,6 +53,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     model: string;
     newProjectId: string;
   } | null>(null);
+  const [waitingForAnswer, setWaitingForAnswer] = useState(false);
 
   // Load default model on mount
   useEffect(() => {
@@ -169,10 +170,17 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
         }
       }
 
+      // When agent asks a question, pause loading and wait for user answer
+      if (message.type === "waiting_for_answer") {
+        setWaitingForAnswer(true);
+        setIsLoading(false);
+      }
+
       // Stop loading when session completes
       if (message.type === "session_complete" || message.type === "stopped") {
         setIsLoading(false);
         setIsStopping(false);
+        setWaitingForAnswer(false);
         if (message.type === "stopped") {
           toast.info(t('stopped'));
         }
@@ -231,6 +239,22 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     wsRef.current.send(JSON.stringify({ content: input, model: selectedModel || undefined, provider_id: selectedProviderId || undefined }));
     setInput("");
     setIsLoading(true);
+    setWaitingForAnswer(false);
+  };
+
+  const sendAnswer = (answer: string) => {
+    if (!wsRef.current || !isConnected) return;
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: answer,
+      type: "chat",
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    wsRef.current.send(JSON.stringify({ content: answer, model: selectedModel || undefined, provider_id: selectedProviderId || undefined }));
+    setIsLoading(true);
+    setWaitingForAnswer(false);
   };
 
   const handleStop = () => {
@@ -375,10 +399,52 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                           ? "bg-zinc-800 border border-zinc-700"
                           : message.type === "session_complete"
                           ? "bg-green-900/30 border border-green-800"
+                          : message.type === "waiting_for_answer"
+                          ? "bg-blue-900/20 border border-blue-800/50"
                           : "bg-zinc-900"
                       }`}
                     >
-                      {message.type === "tool_use" ? (
+                      {message.type === "tool_use" && message.metadata?.tool_name === "AskUserQuestion" ? (
+                        <div className="space-y-3">
+                          {(message.metadata?.tool_input?.questions || []).map((q: any, qi: number) => (
+                            <div key={qi}>
+                              <div className="flex items-center gap-2 mb-2">
+                                {q.header && (
+                                  <span className="px-2 py-0.5 text-xs font-medium bg-blue-600/30 text-blue-300 rounded-full">
+                                    {q.header}
+                                  </span>
+                                )}
+                                <span className="text-sm font-medium text-zinc-200">{q.question}</span>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(q.options || []).map((opt: any, oi: number) => (
+                                  <button
+                                    key={oi}
+                                    onClick={() => sendAnswer(opt.label)}
+                                    disabled={!isConnected || isLoading}
+                                    className="w-full flex items-start gap-2 px-3 py-2 rounded-md bg-zinc-700/50 border border-zinc-600/50 hover:bg-blue-600/20 hover:border-blue-500/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                  >
+                                    <span className="mt-0.5 w-5 h-5 rounded-full border border-zinc-500 flex items-center justify-center flex-shrink-0 text-xs text-zinc-400">
+                                      {oi + 1}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-medium text-zinc-200">{opt.label}</div>
+                                      {opt.description && (
+                                        <div className="text-xs text-zinc-400 mt-0.5">{opt.description}</div>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : message.type === "waiting_for_answer" ? (
+                        <div className="flex items-center gap-2 text-sm text-blue-400">
+                          <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                          {message.content}
+                        </div>
+                      ) : message.type === "tool_use" ? (
                         <div className="text-sm font-mono">{message.content}</div>
                       ) : (
                         <ReactMarkdown
@@ -445,11 +511,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !isLoading && sendMessage()}
-                    placeholder={isLoading ? t('executing') : t('placeholder')}
+                    placeholder={waitingForAnswer ? t('answerPlaceholder') : isLoading ? t('executing') : t('placeholder')}
                     className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
-                    disabled={!isConnected || isLoading}
+                    disabled={!isConnected || (isLoading && !waitingForAnswer)}
                   />
-                  {isLoading ? (
+                  {isLoading && !waitingForAnswer ? (
                     <button
                       onClick={handleStop}
                       disabled={!isConnected || isStopping}
@@ -470,7 +536,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                   ) : (
                     <button
                       onClick={sendMessage}
-                      disabled={!isConnected || isLoading || !input.trim()}
+                      disabled={!isConnected || (isLoading && !waitingForAnswer) || !input.trim()}
                       className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
                     >
                       <Send className="w-5 h-5" />

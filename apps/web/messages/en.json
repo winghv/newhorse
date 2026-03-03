@@ -48,7 +48,8 @@
     "agentConfirmed": "Agent \"{name}\" confirmed, redirecting...",
     "connected": "Connected",
     "disconnected": "Disconnected",
-    "projectFiles": "Project files"
+    "projectFiles": "Project files",
+    "answerPlaceholder": "Select an option above or type your answer..."
   },
   "settings": {
     "title": "Settings"
