@@ -13,6 +13,7 @@ MESSAGES = {
         "session_cleared": "Conversation cleared, new session started",
         "agent_initialized": "Agent initialized (Model: {model})",
         "session_complete": "Session complete",
+        "waiting_for_answer": "Waiting for your answer...",
     },
     "zh": {
         "agent_created": 'Agent「{name}」已创建',
@@ -20,6 +21,7 @@ MESSAGES = {
         "session_cleared": "对话已清空，新会话已开始",
         "agent_initialized": "Agent 已初始化（模型：{model}）",
         "session_complete": "会话完成",
+        "waiting_for_answer": "等待您的回答...",
     },
 }
 
