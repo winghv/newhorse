@@ -13,7 +13,7 @@ router = APIRouter()
 def list_all_models(db: Session = Depends(get_db)):
     """List all models from enabled providers, grouped by provider."""
     providers = db.query(Provider).filter(
-        Provider.enabled == True
+        Provider.enabled
     ).order_by(Provider.is_builtin.desc(), Provider.name).all()
 
     result = []

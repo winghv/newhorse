@@ -1,7 +1,5 @@
 """Integration tests for WebSocket chat endpoint."""
 
-import pytest
-from fastapi.testclient import TestClient
 from app.main import app
 
 
@@ -10,7 +8,7 @@ class TestWebSocketConnection:
 
     def test_websocket_endpoint_exists(self, client, sample_project):
         """WebSocket endpoint can be accessed."""
-        project_id = sample_project["id"]
+        _ = sample_project["id"]  # Required by fixture but WebSocket not directly testable
         # Note: TestClient doesn't support WebSocket directly
         # This test verifies the route is registered
         from fastapi.routing import APIRoute

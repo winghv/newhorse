@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.services.cli import agent_manager
 from app.common.types import AgentType
 from app.core.config import settings
 from app.core.terminal_ui import ui
+from app.core.execution_state import cancelled_projects
 from app.services.cli.config_loader import load_agent_config, save_user_template, save_project_config
 from app.services.cli.runners.router import ProviderRouter
 from app.common.messages import get_message
@@ -67,9 +68,6 @@ session_store: dict[str, str] = {}
 # Track currently executing agent per project
 executing_agent: dict[str, object] = {}
 
-# Import cancelled projects from shared state
-from app.core.execution_state import cancelled_projects
-
 
 @router.websocket("/{project_id}")
 async def websocket_endpoint(websocket: WebSocket, project_id: str):
@@ -113,7 +111,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                             "created_at": datetime.utcnow().isoformat(),
                         }, project_id)
                 else:
-                    print(f"[DEBUG] project_id not in executing_agent, checking cancelled flag")
+                    print("[DEBUG] project_id not in executing_agent, checking cancelled flag")
                     # Even if no agent, send stopped message if we marked it cancelled
                     await manager.send_message({
                         "id": str(uuid.uuid4()),

@@ -1,6 +1,5 @@
 """Integration tests for /api/chat/{project_id}/messages endpoint."""
 
-import pytest
 
 
 class TestGetMessages:

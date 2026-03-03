@@ -270,6 +270,9 @@ export default function Home() {
       {/* Top nav */}
       <div className="absolute top-0 right-0 p-4 z-10 flex items-center gap-1">
         <LanguageSwitcher />
+        <Link href="/agents" className="p-2 rounded-lg hover:bg-zinc-800 transition-colors" title={t("agentsTitle")}>
+          <Bot className="w-5 h-5 text-zinc-400" />
+        </Link>
         <Link href="/settings" className="p-2 rounded-lg hover:bg-zinc-800 transition-colors" title={t("settingsTitle")}>
           <Settings className="w-5 h-5 text-zinc-400" />
         </Link>

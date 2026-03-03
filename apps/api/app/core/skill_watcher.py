@@ -2,9 +2,7 @@
 Skill 热加载模块 - 监听 skill 目录变化并清除缓存。
 """
 import os
-import time
 from typing import Dict, Optional
-from watchfiles import awatch
 
 from app.core.config import settings
 from app.core.terminal_ui import ui
