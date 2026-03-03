@@ -195,28 +195,75 @@ async def upload_skill(
     }
 
 
+@router.get("/{skill_id}")
+def get_skill(
+    skill_id: str,
+    scope: str = Query("global"),
+    project_id: Optional[str] = Query(None),
+):
+    """Get skill detail including full SKILL.md content."""
+    if "/" in skill_id or "\\" in skill_id or ".." in skill_id:
+        raise HTTPException(400, "Invalid skill_id")
+
+    if scope == "project" and project_id:
+        skill_dir = _project_skills_dir(project_id) / skill_id
+    else:
+        skill_dir = GLOBAL_SKILLS_DIR / skill_id
+
+    if not skill_dir.exists():
+        raise HTTPException(404, f"Skill '{skill_id}' not found")
+
+    info = _parse_skill_frontmatter(skill_dir)
+    if not info:
+        raise HTTPException(404, "Skill metadata not found")
+    info["scope"] = scope
+
+    # Read full SKILL.md body (after frontmatter)
+    skill_md = skill_dir / "SKILL.md"
+    body = ""
+    if skill_md.is_file():
+        text = skill_md.read_text(encoding="utf-8")
+        if text.startswith("---"):
+            end = text.find("---", 3)
+            if end != -1:
+                body = text[end + 3:].strip()
+    info["body"] = body
+
+    # List files in skill directory
+    files = []
+    for f in sorted(skill_dir.rglob("*")):
+        if f.is_file():
+            files.append(str(f.relative_to(skill_dir)))
+    info["files"] = files
+
+    return {"skill": info}
+
+
 @router.delete("/{skill_id}")
 def delete_skill(
     skill_id: str,
     scope: str = Query("project"),
     project_id: Optional[str] = Query(None),
 ):
-    """Delete a project-level skill. Global skills cannot be deleted via API."""
-    if scope != "project":
-        raise HTTPException(403, "Only project-level skills can be deleted via API")
-    if not project_id:
-        raise HTTPException(400, "project_id is required")
-
+    """Delete a skill by scope."""
     # Prevent path traversal
     if "/" in skill_id or "\\" in skill_id or ".." in skill_id:
         raise HTTPException(400, "Invalid skill_id")
 
-    target = _project_skills_dir(project_id) / skill_id
+    if scope == "global":
+        target = GLOBAL_SKILLS_DIR / skill_id
+    elif scope == "project":
+        if not project_id:
+            raise HTTPException(400, "project_id is required for project scope")
+        target = _project_skills_dir(project_id) / skill_id
+    else:
+        raise HTTPException(400, "scope must be 'project' or 'global'")
+
     if not target.exists():
         raise HTTPException(404, f"Skill '{skill_id}' not found")
 
     shutil.rmtree(target)
-    ui.info(f"Skill '{skill_id}' deleted from project {project_id}", "SkillsAPI")
+    ui.info(f"Skill '{skill_id}' deleted ({scope})", "SkillsAPI")
 
     return {"success": True}
 
