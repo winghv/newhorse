@@ -13,7 +13,7 @@ from app.api import projects_router, chat_router, agents_router, files_router, p
 from app.core import settings, configure_logging, ui
 from app.db import Base, engine
 from app.db.migrate import run_migrations
-from app.db.seed import seed_providers
+from app.db.seed import seed_providers, seed_butler_project
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,9 @@ async def on_startup():
 
     # Seed built-in providers
     seed_providers()
+
+    # Seed Butler project (personal assistant)
+    seed_butler_project()
 
     # Ensure projects directory exists
     os.makedirs(settings.projects_root, exist_ok=True)

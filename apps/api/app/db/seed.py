@@ -104,3 +104,32 @@ def seed_providers():
         ui.error(f"Failed to seed providers: {e}", "Seed")
     finally:
         db.close()
+
+
+def seed_butler_project():
+    """Create the Butler (personal assistant) project if it doesn't exist."""
+    db: DBSession = SessionLocal()
+    try:
+        from app.models.projects import Project
+
+        existing = db.query(Project).filter(Project.preferred_cli == "butler").first()
+        if existing:
+            ui.debug("Butler project already exists", "Seed")
+            return
+
+        butler = Project(
+            id="butler",
+            name="Personal Butler",
+            description="Your AI team manager — delegates tasks to specialist agents",
+            repo_path=None,
+            status="active",
+            preferred_cli="butler",
+        )
+        db.add(butler)
+        db.commit()
+        ui.success("Created Butler project", "Seed")
+    except Exception as e:
+        db.rollback()
+        ui.error(f"Failed to seed Butler project: {e}", "Seed")
+    finally:
+        db.close()

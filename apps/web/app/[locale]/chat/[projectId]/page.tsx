@@ -17,6 +17,7 @@ import { AgentConfig } from "@/components/AgentConfig";
 import { toast } from "sonner";
 import { AgentCreatedModal } from "@/components/AgentCreatedModal";
 import ModelSelector from "@/components/ModelSelector";
+import { DelegationCard } from "@/components/DelegationCard";
 
 interface Message {
   id: string;
@@ -380,7 +381,38 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                   </div>
                 )}
 
-                {messages.map((message) => (
+                {messages.map((message) => {
+                  // Delegation messages — render as cards
+                  if (message.type === "delegation_start") {
+                    const delegationId = message.metadata?.delegation_id;
+                    const relatedUpdates = messages.filter(
+                      (m) => m.type === "delegation_update" && m.metadata?.delegation_id === delegationId
+                    );
+                    const completion = messages.find(
+                      (m) => m.type === "delegation_complete" && m.metadata?.delegation_id === delegationId
+                    );
+                    return (
+                      <div key={message.id} className="flex gap-3">
+                        <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 max-w-[80%]">
+                          <DelegationCard
+                            message={message}
+                            updates={relatedUpdates}
+                            completion={completion}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Skip update/complete messages — already consumed by DelegationCard
+                  if (message.type === "delegation_update" || message.type === "delegation_complete") {
+                    return null;
+                  }
+
+                  return (
                   <div
                     key={message.id}
                     className={`flex gap-3 ${message.role === "user" ? "justify-end" : ""}`}
@@ -486,7 +518,8 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
 
                 {isLoading && (
                   <div className="flex gap-3">

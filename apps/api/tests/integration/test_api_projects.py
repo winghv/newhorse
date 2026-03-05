@@ -7,10 +7,13 @@ class TestListProjects:
     """GET /api/projects/ — list all projects."""
 
     def test_empty_list(self, client):
-        """Returns an empty list when no projects exist."""
+        """Returns only the seeded Butler project when no user projects exist."""
         resp = client.get("/api/projects/")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        # Butler project is auto-seeded on startup
+        assert len(data) == 1
+        assert data[0]["preferred_cli"] == "butler"
 
     def test_lists_created_projects(self, client, sample_project):
         """Returns projects that have been created."""
