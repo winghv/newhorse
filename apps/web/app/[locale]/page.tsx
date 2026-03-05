@@ -252,6 +252,9 @@ export default function Home() {
       );
     });
 
+  const butlerProject = projects.find((p) => p.preferred_cli === "butler");
+  const regularProjects = filteredProjects.filter((p) => p.preferred_cli !== "butler");
+
   const canCreate = description.trim().length > 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -525,10 +528,31 @@ export default function Home() {
               </div>
             )}
 
+            {/* Butler — Personal Assistant */}
+            {butlerProject && (
+              <div
+                onClick={() => navigateToChat(butlerProject)}
+                className="mb-4 flex items-center gap-4 p-4 bg-gradient-to-r from-violet-500/5 to-blue-500/5 rounded-xl border border-violet-500/20 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/5 transition-all duration-200 cursor-pointer group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-5 h-5 text-violet-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-medium text-violet-300 group-hover:text-violet-200 transition-colors">
+                    {butlerProject.name}
+                  </h3>
+                  <p className="text-sm text-zinc-500 truncate">
+                    {butlerProject.description || "Your AI team manager"}
+                  </p>
+                </div>
+                <ArrowUp className="w-4 h-4 text-zinc-600 rotate-90 group-hover:text-violet-400 transition-colors" />
+              </div>
+            )}
+
             {/* Project Grid */}
-            {filteredProjects.length > 0 ? (
+            {regularProjects.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {filteredProjects.map((project, index) => (
+                {regularProjects.map((project, index) => (
                   <div
                     key={project.id}
                     onClick={() => navigateToChat(project)}
