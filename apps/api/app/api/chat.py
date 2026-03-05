@@ -158,7 +158,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             finally:
                 db_for_project.close()
 
-            agent = agent_manager.get_agent(AgentType.HELLO)
+            agent = agent_manager.get_agent(AgentType.BUTLER if agent_type == "butler" else AgentType.HELLO)
 
             # Track executing agent for pause support
             print(f"[DEBUG] Storing agent for project: {project_id}")

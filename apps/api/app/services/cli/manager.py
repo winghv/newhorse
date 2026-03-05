@@ -6,6 +6,7 @@ from typing import Dict, Any
 from app.common.types import AgentType
 from app.core.terminal_ui import ui
 from .adapters.hello_agent import HelloAgent
+from .adapters.butler_agent import ButlerAgent
 from .base import BaseCLI
 
 
@@ -23,7 +24,10 @@ class AgentManager:
 
     def _create_agent(self, agent_type: AgentType) -> BaseCLI:
         """Create a new agent instance."""
-        if agent_type == AgentType.HELLO:
+        if agent_type == AgentType.BUTLER:
+            ui.info("Creating Butler Agent", "AgentManager")
+            return ButlerAgent()
+        elif agent_type == AgentType.HELLO:
             ui.info("Creating Hello Agent", "AgentManager")
             return HelloAgent()
         else:
@@ -42,7 +46,12 @@ class AgentManager:
                 "name": "Hello Agent",
                 "description": "A friendly demonstration agent",
                 "type": AgentType.HELLO.value,
-            }
+            },
+            AgentType.BUTLER.value: {
+                "name": "Personal Butler",
+                "description": "Your AI team manager with specialist delegation",
+                "type": AgentType.BUTLER.value,
+            },
         }
 
 
