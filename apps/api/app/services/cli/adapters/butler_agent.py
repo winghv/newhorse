@@ -3,8 +3,6 @@ Butler Agent — personal assistant that delegates tasks to specialist agents.
 
 Uses custom MCP tool (delegate_task) to run specialist agent sub-sessions.
 """
-import asyncio
-import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -24,7 +22,7 @@ from app.core.config import settings
 from app.core.terminal_ui import ui
 from app.models.messages import Message
 from app.services.cli.base import BaseCLI, MODEL_MAPPING
-from app.services.cli.config_loader import load_agent_config, AgentConfig
+from app.services.cli.config_loader import load_agent_config
 from app.services.cli.delegation import create_delegation_tool
 from app.common.messages import get_message
 
@@ -275,7 +273,6 @@ class ButlerAgent(BaseCLI):
                                 content += block.text
                             elif isinstance(block, ToolUseBlock):
                                 tool_name = block.name
-                                normalized = self._normalize_tool_name(tool_name)
 
                                 tool_message = Message(
                                     id=str(uuid.uuid4()),

@@ -6,7 +6,6 @@ that the Butler agent can call like any other tool.
 """
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 from claude_agent_sdk import (
