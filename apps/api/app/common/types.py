@@ -10,6 +10,9 @@ class AgentType(str, Enum):
     # Hello World demo agent
     HELLO = "hello"
 
+    # Butler — personal assistant that delegates to specialist agents
+    BUTLER = "butler"
+
     @classmethod
     def from_value(cls, value: str):
         """Get enum from value string"""
