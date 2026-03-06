@@ -412,6 +412,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                     return null;
                   }
 
+                  // Hide delegate_task tool_use — DelegationCard already shows this
+                  if (message.type === "tool_use" && message.metadata?.tool_name === "mcp__butler-tools__delegate_task") {
+                    return null;
+                  }
+
                   return (
                   <div
                     key={message.id}

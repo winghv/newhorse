@@ -70,12 +70,18 @@ async def run_specialist_agent(
         f"All file operations MUST use relative paths."
     )
 
+    # Clear CLAUDECODE env var to allow nested Claude Agent sessions
+    # (Claude Code refuses to launch inside another session without this)
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         cwd=project_path,
         model=cli_model,
         allowed_tools=config.allowed_tools,
         permission_mode="bypassPermissions",
+        env=env,
     )
 
     ui.info(f"Starting specialist [{agent_type}]: {task[:80]}...", "Delegation")

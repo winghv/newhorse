@@ -2,11 +2,14 @@
 Seed built-in providers and their default models.
 Runs on startup — skips if providers already exist.
 """
+import os
+import shutil
 import uuid
 
 from sqlalchemy.orm import Session as DBSession
 from app.db.base import SessionLocal
 from app.models.provider import Provider, ProviderModel
+from app.core.config import settings
 from app.core.terminal_ui import ui
 
 
@@ -115,19 +118,30 @@ def seed_butler_project():
         existing = db.query(Project).filter(Project.preferred_cli == "butler").first()
         if existing:
             ui.debug("Butler project already exists", "Seed")
-            return
+        else:
+            butler = Project(
+                id="butler",
+                name="Personal Butler",
+                description="Your AI team manager — delegates tasks to specialist agents",
+                repo_path=None,
+                status="active",
+                preferred_cli="butler",
+            )
+            db.add(butler)
+            db.commit()
+            ui.success("Created Butler project", "Seed")
 
-        butler = Project(
-            id="butler",
-            name="Personal Butler",
-            description="Your AI team manager — delegates tasks to specialist agents",
-            repo_path=None,
-            status="active",
-            preferred_cli="butler",
-        )
-        db.add(butler)
-        db.commit()
-        ui.success("Created Butler project", "Seed")
+        # Ensure butler project directory has the correct agent.yaml from template
+        # (prevents project-level defaults from overriding the global template)
+        project_dir = os.path.join(settings.projects_root, "butler", ".claude")
+        template_src = os.path.join(settings.project_root, "extensions", "agents", "butler", "agent.yaml")
+        project_config = os.path.join(project_dir, "agent.yaml")
+
+        if os.path.exists(template_src):
+            os.makedirs(project_dir, exist_ok=True)
+            shutil.copy2(template_src, project_config)
+            ui.debug("Synced butler agent.yaml from template", "Seed")
+
     except Exception as e:
         db.rollback()
         ui.error(f"Failed to seed Butler project: {e}", "Seed")

@@ -154,7 +154,15 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             db_for_project = SessionLocal()
             try:
                 project = db_for_project.query(Project).filter(Project.id == project_id).first()
-                agent_type = project.preferred_cli if project else "hello"
+                if project:
+                    agent_type = project.preferred_cli or "hello"
+                elif project_id == "butler":
+                    # Butler project missing from DB — re-seed it
+                    from app.db.seed import seed_butler_project
+                    seed_butler_project()
+                    agent_type = "butler"
+                else:
+                    agent_type = "hello"
             finally:
                 db_for_project.close()
 
@@ -188,6 +196,12 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
             )
 
             runner = ProviderRouter.get_runner(resolved) if resolved else None
+
+            # Butler MUST use Claude Agent SDK path (needs MCP delegation tools)
+            # Non-Anthropic runners bypass the agent entirely
+            if agent_type == "butler" and runner:
+                ui.info("Butler requires Claude Agent SDK — ignoring non-Anthropic runner", "Chat")
+                runner = None
 
             # Stream responses
             session_id = str(uuid.uuid4())
@@ -228,12 +242,29 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                         finally:
                             db.close()
                 else:
-                    # Anthropic path: use Claude Agent SDK via agent
-                    if resolved and resolved["protocol"] == "anthropic":
-                        if resolved["api_key"]:
-                            os.environ["ANTHROPIC_API_KEY"] = resolved["api_key"]
-                        if resolved["base_url"]:
-                            os.environ["ANTHROPIC_BASE_URL"] = resolved["base_url"]
+                    # Claude Agent SDK path: set auth env vars for the SDK
+                    # Butler always uses this path; normal agents use it for anthropic protocol
+                    if resolved:
+                        if agent_type == "butler":
+                            # Butler routes ALL providers through Claude SDK (needs MCP tools).
+                            # Set auth env vars regardless of protocol — providers like MiniMax
+                            # offer Anthropic-compatible APIs via ANTHROPIC_BASE_URL.
+                            if resolved["api_key"]:
+                                os.environ["ANTHROPIC_API_KEY"] = resolved["api_key"]
+                            if resolved["base_url"]:
+                                os.environ["ANTHROPIC_BASE_URL"] = resolved["base_url"]
+                        elif resolved["protocol"] == "anthropic":
+                            if resolved["api_key"]:
+                                os.environ["ANTHROPIC_API_KEY"] = resolved["api_key"]
+                            if resolved["base_url"]:
+                                os.environ["ANTHROPIC_BASE_URL"] = resolved["base_url"]
+
+                    # Give Butler agents a direct WebSocket send callback
+                    # so delegation events push in real time (not buffered)
+                    if agent_type == "butler":
+                        async def ws_send_delegation(msg_dict):
+                            await manager.send_message(msg_dict, project_id)
+                        agent._ws_send_fn = ws_send_delegation
 
                     async for msg in agent.execute_with_streaming(
                         instruction=content,

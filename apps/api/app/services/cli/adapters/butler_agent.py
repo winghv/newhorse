@@ -3,6 +3,7 @@ Butler Agent — personal assistant that delegates tasks to specialist agents.
 
 Uses custom MCP tool (delegate_task) to run specialist agent sub-sessions.
 """
+import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
@@ -53,19 +54,16 @@ class ButlerAgent(BaseCLI):
         """Initialize Claude Agent options with delegation MCP tool."""
         project_path = os.path.join(settings.projects_root, project_id)
 
-        # Load butler config from template
+        # Load butler config for system_prompt and allowed_tools
         config = load_agent_config(project_path, agent_type="butler")
 
         ui.info(f"Initializing Butler for project: {project_id}", "Butler")
 
         # Resolve model
         if model:
-            cli_model = MODEL_MAPPING.get(model, config.model)
+            cli_model = MODEL_MAPPING.get(model, model)
         else:
             cli_model = MODEL_MAPPING.get(config.model, config.model)
-
-        # Create delegation MCP tool server (event callback set later in execute_with_streaming)
-        self._delegation_server = create_delegation_tool(project_id)
 
         # Skills directories
         add_dirs = []
@@ -73,12 +71,21 @@ class ButlerAgent(BaseCLI):
         if os.path.exists(global_skills_dir):
             add_dirs.append(global_skills_dir)
 
+        # Note: MCP delegation server is set by execute_with_streaming (with event callback).
+        # Use self._delegation_server if already created, otherwise create a bare one.
+        mcp_servers = {}
+        if hasattr(self, '_delegation_server') and self._delegation_server:
+            mcp_servers = {"butler-tools": self._delegation_server}
+        else:
+            self._delegation_server = create_delegation_tool(project_id)
+            mcp_servers = {"butler-tools": self._delegation_server}
+
         options = ClaudeAgentOptions(
             system_prompt=config.system_prompt,
             cwd=project_path,
             model=cli_model,
             allowed_tools=config.allowed_tools,
-            mcp_servers={"butler-tools": self._delegation_server},
+            mcp_servers=mcp_servers,
             add_dirs=add_dirs,
             resume=claude_session_id if not force_new_session else None,
         )
@@ -101,10 +108,35 @@ class ButlerAgent(BaseCLI):
         locale: str = "en",
     ) -> AsyncGenerator[Message, None]:
         """Override to inject delegation event callback into the MCP tool."""
-        self._delegation_events: List[dict] = []
 
         def on_delegation_event(event: dict):
-            self._delegation_events.append(event)
+            """Push delegation events directly to WebSocket via _ws_send_fn."""
+            event_type = event.get("type", "")
+
+            if event_type in ("delegation_start", "delegation_complete"):
+                msg_type = event_type
+                content = self._format_delegation_event(event)
+            elif event_type == "tool_use":
+                msg_type = "delegation_update"
+                content = self._format_tool_event(event)
+            else:
+                return
+
+            msg_dict = {
+                "id": str(uuid.uuid4()),
+                "role": "system",
+                "content": content,
+                "type": msg_type,
+                "metadata": event,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+            if hasattr(self, '_ws_send_fn') and self._ws_send_fn:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._ws_send_fn(msg_dict))
+                except RuntimeError:
+                    pass
 
         # Recreate delegation tool with event callback
         self._delegation_server = create_delegation_tool(project_id, on_event=on_delegation_event)
@@ -126,8 +158,6 @@ class ButlerAgent(BaseCLI):
             if image_refs:
                 processed_instruction = f"{instruction}\n\nUploaded files:\n{chr(10).join(image_refs)}"
 
-        cli_model = MODEL_MAPPING.get(model, "claude-sonnet-4-5-20250929") if model else "claude-sonnet-4-5-20250929"
-
         is_clear_command = instruction.strip().lower() == "/clear"
 
         options = self.init_claude_option(
@@ -138,9 +168,11 @@ class ButlerAgent(BaseCLI):
             user_config=user_config,
             agent_type=agent_type,
         )
-        # Inject the delegation server with callback
+        # Ensure delegation server with callback is used (set before init_claude_option)
         options.mcp_servers = {"butler-tools": self._delegation_server}
         options.permission_mode = "bypassPermissions"
+
+        cli_model = options.model  # For display in status messages
 
         abs_project_path = os.path.abspath(project_path)
         cwd_instruction = (
@@ -197,41 +229,13 @@ class ButlerAgent(BaseCLI):
         log_callback: Callable[[dict], Any],
         locale: str = "en",
     ) -> AsyncGenerator[Message, None]:
-        """Butler-specific streaming that also drains delegation events."""
+        """Butler-specific streaming — delegation events are pushed via _ws_send_fn."""
         async with ClaudeSDKClient(options=options) as client:
             self.cli = client
             await self.cli.query(instruction)
 
             async for message_obj in self.cli.receive_messages():
-                # Drain any delegation events and yield them as messages
-                while self._delegation_events:
-                    event = self._delegation_events.pop(0)
-                    event_type = event.get("type", "")
-
-                    if event_type in ("delegation_start", "delegation_complete"):
-                        yield Message(
-                            id=str(uuid.uuid4()),
-                            project_id=project_id,
-                            role="system",
-                            message_type=event_type,
-                            content=self._format_delegation_event(event),
-                            metadata_json=event,
-                            session_id=session_id,
-                            created_at=datetime.utcnow(),
-                        )
-                    elif event_type == "tool_use":
-                        yield Message(
-                            id=str(uuid.uuid4()),
-                            project_id=project_id,
-                            role="system",
-                            message_type="delegation_update",
-                            content=self._format_tool_event(event),
-                            metadata_json=event,
-                            session_id=session_id,
-                            created_at=datetime.utcnow(),
-                        )
-
-                # Process Butler's own messages (same as base _run_streaming)
+                # Process Butler's own messages
                 if isinstance(message_obj, SystemMessage) or "SystemMessage" in str(type(message_obj)):
                     subtype = getattr(message_obj, "subtype", None)
                     if hasattr(message_obj, "subtype") and message_obj.subtype == 'init':
@@ -305,23 +309,6 @@ class ButlerAgent(BaseCLI):
                         )
 
                 elif isinstance(message_obj, ResultMessage) or "ResultMessage" in str(type(message_obj)):
-                    # Drain remaining delegation events
-                    while self._delegation_events:
-                        event = self._delegation_events.pop(0)
-                        event_type = event.get("type", "")
-                        if event_type in ("delegation_start", "delegation_complete", "tool_use"):
-                            msg_type = "delegation_update" if event_type == "tool_use" else event_type
-                            yield Message(
-                                id=str(uuid.uuid4()),
-                                project_id=project_id,
-                                role="system",
-                                message_type=msg_type,
-                                content=self._format_delegation_event(event) if event_type != "tool_use" else self._format_tool_event(event),
-                                metadata_json=event,
-                                session_id=session_id,
-                                created_at=datetime.utcnow(),
-                            )
-
                     duration_ms = getattr(message_obj, 'duration_ms', 0)
                     total_cost_usd = getattr(message_obj, 'total_cost_usd', 0)
                     num_turns = getattr(message_obj, 'num_turns', 0)
@@ -373,4 +360,10 @@ class ButlerAgent(BaseCLI):
 
     def _format_tool_event(self, event: dict) -> str:
         tool_name = event.get("tool_name", "unknown")
-        return f"[sub-agent] {tool_name}"
+        tool_input = event.get("tool_input", {})
+        # Show meaningful context: tool + target file if available
+        file_path = tool_input.get("file_path", "") or tool_input.get("path", "") if isinstance(tool_input, dict) else ""
+        if file_path:
+            short_path = file_path.split("/")[-1] if "/" in file_path else file_path
+            return f"{tool_name} {short_path}"
+        return tool_name
