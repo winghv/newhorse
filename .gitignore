@@ -21,3 +21,4 @@ dist/
 .claude-flow/
 .swarm
 .mcp.json
+extensions/
