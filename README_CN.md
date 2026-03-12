@@ -22,6 +22,8 @@
 
 [快速开始](#快速开始) · [为什么选 Newhorse](#为什么选-newhorse) · [文档](docs/) · [参与贡献](CONTRIBUTING.md) · [English](README.md)
 
+<video src="docs/intro-video.mp4" width="100%" autoplay muted loop playsinline></video>
+
 </div>
 
 ---
@@ -46,7 +48,7 @@
 
 Newhorse 是一座 Agent 工厂。Coder、Researcher、Writer、Reviewer、Planner、Data Analyst —— 所有类型的 Agent 开箱即用。从模板创建，或从零定义，没有数量限制。想造多少造多少。
 
-### 智能体生成智能体
+### 全托管，团队协作
 
 **Butler（管家）** 是你的私人调度员。给它一个复杂任务，它会自动拆解、分派给专家 Agent —— Planner 做设计、Coder 写代码、Reviewer 把关质量。Agent 管理 Agent，递归调度，智能协作。
 

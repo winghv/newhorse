@@ -22,6 +22,8 @@ No CLI. No boilerplate. Just open your browser and go.
 
 [Quick Start](#quick-start) · [Why Newhorse](#why-newhorse) · [Documentation](docs/) · [Contributing](CONTRIBUTING.md) · [中文](README_CN.md)
 
+<video src="docs/intro-video.mp4" width="100%" autoplay muted loop playsinline></video>
+
 </div>
 
 ---
