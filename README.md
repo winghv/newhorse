@@ -22,7 +22,9 @@ No CLI. No boilerplate. Just open your browser and go.
 
 [Quick Start](#quick-start) · [Why Newhorse](#why-newhorse) · [Documentation](docs/) · [Contributing](CONTRIBUTING.md) · [中文](README_CN.md)
 
-[![Watch the intro video](docs/intro-thumbnail.png)](https://github.com/winghv/newhorse/releases/download/video-assets/intro-video.mp4)
+[![Watch the intro video](docs/intro-preview.gif)](https://github.com/winghv/newhorse/releases/download/video-assets/intro-video.mp4)
+
+*Click to watch the full video with sound*
 
 </div>
 
