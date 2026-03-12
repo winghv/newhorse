@@ -22,7 +22,7 @@
 
 [快速开始](#快速开始) · [为什么选 Newhorse](#为什么选-newhorse) · [文档](docs/) · [参与贡献](CONTRIBUTING.md) · [English](README.md)
 
-[![Watch the intro video](docs/intro-preview.gif)](https://github.com/winghv/newhorse/releases/download/video-assets/intro-video.mp4)
+[![观看介绍视频](docs/intro-preview-zh.gif)](https://github.com/winghv/newhorse/releases/download/video-assets/intro-video-zh.mp4)
 
 *点击观看完整带声音视频*
 
