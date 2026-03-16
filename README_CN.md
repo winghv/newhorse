@@ -43,6 +43,8 @@
 | "Agent 文件管理混乱" | 每个项目独立目录，安全隔离，互不干扰 |
 | "想让多个 Agent 协作" | Butler 管家自动分派任务给专家 Agent，全程自动 |
 | "看不到 Agent 在做什么" | 实时流式输出、文件预览、活动记录 —— 所见为实 |
+| "Claude Code 很强但门槛太高" | 同等强大的 Agent 能力，零配置可视化操作，小白也能驾驭 |
+| "只能在电脑上用" | 浏览器原生，手机、平板、任何设备，随时随地管理你的 Agent 军团 |
 
 ## 核心理念
 
@@ -225,34 +227,6 @@ newhorse/
 └── scripts/                → 开发工具脚本
 ```
 
-## 常用命令
-
-```bash
-npm run dev          # 一键启动（API + Web）
-npm run dev:api      # 仅启动后端 (FastAPI :8999)
-npm run dev:web      # 仅启动前端 (Next.js :3999)
-npm run test         # 运行所有测试
-npm run doctor       # 环境诊断
-npm run build        # 生产构建
-```
-
-## API 文档
-
-后端自动提供交互式 API 文档：
-
-- **Swagger UI：** [http://localhost:8999/docs](http://localhost:8999/docs)
-- **ReDoc：** [http://localhost:8999/redoc](http://localhost:8999/redoc)
-
-## 详细文档
-
-| 指南 | 说明 |
-|---|---|
-| [快速上手](docs/getting-started.md) | 安装与第一步 |
-| [系统架构](docs/architecture.md) | 架构设计与数据流 |
-| [Agent 开发](docs/agent-development.md) | 创建自定义 Agent |
-| [技能开发](docs/skill-development.md) | 编写 Agent 技能 |
-| [部署指南](docs/deployment.md) | 生产环境部署 |
-
 ## 参与贡献
 
 欢迎任何形式的贡献 —— Bug 修复、新 Agent、技能扩展、文档改进、创意建议。
@@ -266,6 +240,11 @@ npm run build        # 生产构建
 ---
 
 <div align="center">
+
+> 养一只龙虾，不如喂一群牛马。
+
+别人用 [OpenClaw](https://github.com/openclaw/openclaw) 养一只 AI 龙虾，你用 Newhorse 指挥一整支 Agent 军团。
+一个只能养着看，一群能替你干活。
 
 **Newhorse** —— 别再折腾配置了，开始创造吧。
 

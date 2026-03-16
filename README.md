@@ -43,6 +43,8 @@ Create specialized AI agents, let them spawn other agents, watch them collaborat
 | "Managing agent files is chaos" | Every project gets its own isolated directory — safe and clean |
 | "I want agents to work together" | Butler agent delegates to specialists automatically |
 | "I can't see what agents are doing" | Real-time streaming, file preview, activity feed — what you see is what's real |
+| "Claude Code is powerful but hard" | Same power, zero CLI — visual interface anyone can use |
+| "I can only work from my laptop" | Browser-native. Phone, tablet, any device — manage your agents anywhere |
 
 ## Core Concepts
 
@@ -50,7 +52,7 @@ Create specialized AI agents, let them spawn other agents, watch them collaborat
 
 Newhorse is a workhorse factory. Every agent type — coder, researcher, writer, reviewer, planner, data analyst — is ready to go. Create custom agents from templates or from scratch. There is no limit.
 
-### Agents That Build Agents
+### Agent Teams on Auto-Pilot
 
 The **Butler** agent is your personal orchestrator. Give it a complex task, and it automatically delegates to specialist agents — a planner to design, a coder to implement, a reviewer to verify. Agents managing agents, recursively, intelligently.
 
@@ -222,34 +224,6 @@ newhorse/
 ├── docs/                   → Architecture & guides
 └── scripts/                → Dev tooling
 ```
-
-## Commands
-
-```bash
-npm run dev          # Start everything (API + Web)
-npm run dev:api      # Backend only (FastAPI on :8999)
-npm run dev:web      # Frontend only (Next.js on :3999)
-npm run test         # Run all tests
-npm run doctor       # Diagnose environment issues
-npm run build        # Production build
-```
-
-## API Documentation
-
-The backend auto-serves interactive API docs:
-
-- **Swagger UI:** [http://localhost:8999/docs](http://localhost:8999/docs)
-- **ReDoc:** [http://localhost:8999/redoc](http://localhost:8999/redoc)
-
-## Documentation
-
-| Guide | Description |
-|---|---|
-| [Getting Started](docs/getting-started.md) | Installation and first steps |
-| [Architecture](docs/architecture.md) | System design and data flow |
-| [Agent Development](docs/agent-development.md) | Creating custom agents |
-| [Skill Development](docs/skill-development.md) | Writing agent skills |
-| [Deployment](docs/deployment.md) | Production deployment guide |
 
 ## Contributing
 
