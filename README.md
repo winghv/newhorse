@@ -239,6 +239,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 <div align="center">
 
+> Raise one lobster, or feed a herd of workhorses.
+
+While others use [OpenClaw](https://github.com/SpaceExplorationTechnology/OpenClaw) to raise a single AI lobster, you command a whole army of agents with Newhorse.
+One to watch, a team that works.
+
 **Newhorse** — Stop configuring. Start building.
 
 </div>
