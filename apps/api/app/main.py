@@ -6,8 +6,9 @@ AI Agent Development Platform based on Claude Agent SDK.
 import os
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import projects_router, chat_router, agents_router, files_router, preview_router, activity_router, skills_router, providers_router, models_router
 from app.core import settings, configure_logging, ui
@@ -52,6 +53,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=openapi_tags,
+    redirect_slashes=False,
 )
 
 # CORS middleware
@@ -62,6 +64,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Trailing slash middleware — only add trailing slash for exact router prefix matches
+# to avoid 307 redirects from reverse proxy, without breaking sub-paths
+_ROUTER_PREFIXES = {
+    "/api/projects", "/api/chat", "/api/agents",
+    "/api/preview", "/api/activity", "/api/skills",
+    "/api/providers", "/api/models",
+}
+
+
+class TrailingSlashMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.scope["path"]
+        if path in _ROUTER_PREFIXES:
+            request.scope["path"] = path + "/"
+        return await call_next(request)
+
+
+app.add_middleware(TrailingSlashMiddleware)
 
 # Register routers
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])

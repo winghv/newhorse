@@ -1,0 +1,35 @@
+# Newhorse — AI Agent Development Platform
+#
+# Quick start:
+#   1. cp .env.example .env.docker
+#   2. Edit .env.docker — fill in your API keys
+#   3. docker compose up -d
+#   4. Open http://localhost
+#
+# API keys are NOT baked into the image. They are passed at runtime
+# via environment variables and stored encrypted in the local database.
+
+services:
+  newhorse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: newhorse:latest
+    ports:
+      - "80:80"
+    volumes:
+      - newhorse-data:/app/data
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      - DATABASE_URL=sqlite:///data/newhorse.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3999/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  newhorse-data:

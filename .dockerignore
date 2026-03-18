@@ -1,0 +1,74 @@
+# Build artifacts
+.next/
+build/
+dist/
+
+# Dependencies
+node_modules/
+apps/web/node_modules/
+apps/api/.venv/
+apps/api/venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment — exclude ALL env files to prevent secret leakage
+.env
+.env.*
+.env.local
+.env.docker
+.env.production
+
+# Test & Docs
+coverage/
+docs/
+*.md
+!README.md
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Database — NEVER bake user data or API keys into image
+data/
+**/data/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Secrets
+**/*.pem
+**/*.key
+**/*.crt
+
+# Claude / Swarm local state (may contain session secrets)
+.claude/
+.swarm/
+.claude-flow/
+
+# Cache
+.cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Playwright
+playwright/
+playwright.config.ts
+e2e/
+.playwright-mcp/
+
+# Temporary
+*.log
+tmp/
+temp/
+.DS_Store
