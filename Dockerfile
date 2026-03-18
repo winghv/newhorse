@@ -63,9 +63,27 @@ RUN find /app -name ".env*" -type f -delete 2>/dev/null; \
     rm -rf /app/data/*.db 2>/dev/null; \
     true
 
-# Bundle docker-compose.yml for "docker compose up" usage after pulling from registry
-# (local dev uses the repo's docker-compose.yml with build:; this one uses image: for hub pulls)
-COPY docker-compose.yml /
+# Write docker-compose.yml for "docker compose up" after pulling from registry.
+# Repo docker-compose.yml keeps "build: ." for local dev; this one uses "image:" only.
+RUN printf '%s\n' \
+  'services:' \
+  '  newhorse:' \
+  '    image: newhorse:latest' \
+  '    ports:' \
+  '      - "80:80"' \
+  '    volumes:' \
+  '      - newhorse-data:/app/data' \
+  '    environment:' \
+  '      - DATABASE_URL=sqlite:///data/newhorse.db' \
+  '    restart: unless-stopped' \
+  '    healthcheck:' \
+  '      test: ["CMD", "curl", "-f", "http://localhost:3999/health"]' \
+  '      interval: 30s' \
+  '      timeout: 10s' \
+  '      retries: 3' \
+  'volumes:' \
+  '  newhorse-data:' \
+  > /docker-compose.yml
 
 ENV PYTHONUNBUFFERED=1
 ENV API_PORT=8999
