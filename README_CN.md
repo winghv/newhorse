@@ -101,19 +101,30 @@ data/projects/{project-id}/
 
 ## 快速开始
 
+### Docker（零依赖，推荐方式）
+
+```bash
+docker compose up -d
+open http://localhost
+```
+
+在浏览器中进入 **设置 → 供应商**，配置你的 API 密钥即可。就这么简单 —— 无需 CLI，无需安装任何依赖，无需手写配置文件。
+
+> **你的 API 密钥绝不会烘入镜像。** 密钥在本地数据库中加密存储，运行时安全注入。镜像可以放心推送到公共仓库。
+
+### 本地开发
+
 **环境要求：** Node.js 18+ · Python 3.10+ · Claude API 密钥
 
 ```bash
 git clone https://github.com/winghv/newhorse.git
 cd newhorse
+cp .env.example .env   # 编辑 .env 填入你的 API 密钥
 npm install
 npm run dev
 ```
 
-打开 [http://localhost:3999](http://localhost:3999)，创建项目，开始对话。就这么简单。
-
-> **不需要额外安装 CLI 工具。** 不需要配置守护进程。不需要手写配置文件。
-> 一切已预先就绪，开箱即用。
+打开 [http://localhost:3999](http://localhost:3999)，创建项目，开始对话。
 
 ## 工作流程
 
