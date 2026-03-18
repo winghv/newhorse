@@ -99,30 +99,22 @@ All coordination happens automatically. You describe the goal; the team delivers
 
 ## Quick Start
 
-### Docker (zero-install, recommended)
+**Docker (recommended)**
 
 ```bash
 docker compose up -d
 open http://localhost
 ```
 
-Configure your API key via **Settings → Providers** in the browser. That's it — no CLI, no dependencies, no config files to write manually.
-
-> **Your API keys are never baked into the image.** Keys are encrypted at rest in the local database and passed securely at runtime. The image is safe to push to a public registry.
-
-### Local Development
-
-**Prerequisites:** Node.js 18+ · Python 3.10+ · Claude API key
+**Local:** Node.js 18+ · Python 3.10+ · Claude API key
 
 ```bash
 git clone https://github.com/winghv/newhorse.git
 cd newhorse
-cp .env.example .env   # then edit .env with your API keys
-npm install
-npm run dev
+cp .env.example .env && npm install && npm run dev
 ```
 
-Open [http://localhost:3999](http://localhost:3999). Create a project. Start talking to your agent.
+Open [http://localhost:3999](http://localhost:3999).
 
 ## How It Works
 
