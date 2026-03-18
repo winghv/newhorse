@@ -115,7 +115,7 @@ docker run -d -p 80:80 --name newhorse newhorse/newhorse:latest
 open http://localhost
 ```
 
-**本地：** Node.js 18+ · Python 3.10+ · Claude API 密钥
+**本地：** Node.js 18+ · Python 3.10+ · Claude API 密钥 · [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
 
 ```bash
 git clone https://github.com/winghv/newhorse.git
