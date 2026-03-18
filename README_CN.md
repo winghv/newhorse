@@ -108,6 +108,13 @@ docker compose up -d
 open http://localhost
 ```
 
+**Docker Hub（无需 clone）**
+
+```bash
+docker run -d -p 80:80 --name newhorse newhorse/newhorse:latest
+open http://localhost
+```
+
 **本地：** Node.js 18+ · Python 3.10+ · Claude API 密钥
 
 ```bash

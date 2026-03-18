@@ -106,6 +106,13 @@ docker compose up -d
 open http://localhost
 ```
 
+**Docker Hub (no clone required)**
+
+```bash
+docker run -d -p 80:80 --name newhorse newhorse/newhorse:latest
+open http://localhost
+```
+
 **Local:** Node.js 18+ · Python 3.10+ · Claude API key
 
 ```bash
