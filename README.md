@@ -99,6 +99,14 @@ All coordination happens automatically. You describe the goal; the team delivers
 
 ## Quick Start
 
+**One-command (no clone required)**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/winghv/newhorse/master/scripts/start.sh | bash
+```
+
+Then open [http://localhost:3999](http://localhost:3999). That's it.
+
 **Docker (recommended)**
 
 ```bash
