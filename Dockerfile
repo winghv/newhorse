@@ -63,6 +63,10 @@ RUN find /app -name ".env*" -type f -delete 2>/dev/null; \
     rm -rf /app/data/*.db 2>/dev/null; \
     true
 
+# Bundle docker-compose.yml for "docker compose up" usage after pulling from registry
+# (local dev uses the repo's docker-compose.yml with build:; this one uses image: for hub pulls)
+COPY docker-compose.yml /
+
 ENV PYTHONUNBUFFERED=1
 ENV API_PORT=8999
 ENV HOST=0.0.0.0
