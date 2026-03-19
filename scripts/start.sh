@@ -17,6 +17,9 @@ if [ ! -t 0 ]; then
         cd "$ROOT_DIR"
         echo "📦 安装依赖..."
         npm install
+        # ensure:env creates .env from .env.example (no API_PORT), so append it
+        # API_PORT=3999 matches the Docker default
+        echo "API_PORT=3999" >> .env
         npm run dev
     )
     rm -rf "$ROOT_DIR"
