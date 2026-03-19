@@ -86,7 +86,7 @@ RUN printf '%s\n' \
   > /docker-compose.yml
 
 ENV PYTHONUNBUFFERED=1
-ENV API_PORT=8999
+ENV API_PORT=3999
 ENV HOST=0.0.0.0
 ENV DATABASE_URL=sqlite:///data/newhorse.db
 
@@ -98,4 +98,4 @@ USER newhorse
 
 # Start Next.js frontend on port 80 (handles /api via rewrites)
 # Start backend on port 3999
-CMD ["sh", "-c", "cd /app/frontend && PORT=80 HOSTNAME=0.0.0.0 node server.js & cd /app && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 3999"]
+CMD ["sh", "-c", "cd /app/frontend && PORT=80 HOSTNAME=0.0.0.0 node server.js & cd /app && python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-3999}"]
