@@ -462,6 +462,17 @@ export default function Home() {
           <p className="text-center text-[11px] text-zinc-700 mt-3">
             {t("inputHint")}
           </p>
+
+          {/* Stat overlay — "30+ lines of YAML → 3 clicks" */}
+          <div className="flex justify-center mt-3">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-800/60 border border-zinc-700/40 rounded-full text-[11px] text-zinc-400 font-mono">
+              <span className="text-zinc-300 font-semibold">30+</span>
+              <span>lines of YAML</span>
+              <span className="text-zinc-600 mx-0.5">→</span>
+              <span className="text-zinc-300 font-semibold">3</span>
+              <span>clicks</span>
+            </span>
+          </div>
         </div>
       </section>
 

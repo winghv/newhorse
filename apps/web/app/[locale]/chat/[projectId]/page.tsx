@@ -55,6 +55,9 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     newProjectId: string;
   } | null>(null);
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [dynamicPlaceholder, setDynamicPlaceholder] = useState<string>("");
+  const wasConnectedRef = useRef(false);
 
   // Load default model on mount
   useEffect(() => {
@@ -77,6 +80,39 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       .catch(() => {});
   }, [defaultLoaded]);
 
+  // Fetch project info for dynamic placeholder
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}`)
+      .then((r) => r.json())
+      .then((project) => {
+        // Map agent type/template to placeholder text
+        const agentPlaceholders: Record<string, { en: string; zh: string }> = {
+          "code-reviewer": {
+            en: "What code do you want reviewed?",
+            zh: "你想审查什么代码？",
+          },
+          "user-agent": {
+            en: "What do you need done?",
+            zh: "你需要做什么？",
+          },
+          "planner": {
+            en: "What should I plan for you?",
+            zh: "你想要我规划什么？",
+          },
+        };
+        const locale = window.navigator.language.startsWith("zh") ? "zh" : "en";
+        const key = project.preferred_cli || project.selected_cli || "";
+        const found = agentPlaceholders[key];
+        setDynamicPlaceholder(
+          found ? found[locale] : t("placeholder")
+        );
+      })
+      .catch(() => {
+        // Graceful no-op — keep generic placeholder
+        setDynamicPlaceholder(t("placeholder"));
+      });
+  }, [projectId]);
+
   useEffect(() => {
     // Load message history from server
     fetch(`/api/chat/${projectId}/messages`)
@@ -94,6 +130,8 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
     ws.onopen = () => {
       setIsConnected(true);
+      wasConnectedRef.current = true;
+      setErrorMessage(null);
       console.log("WebSocket connected");
 
       // Auto-send initial message from homepage creation
@@ -205,12 +243,21 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
 
     ws.onclose = () => {
       setIsConnected(false);
-      console.log("WebSocket disconnected");
+      wasConnectedRef.current = false;
+      // Only show error if we were previously connected — clean close after completion is normal
+      if (errorMessage === null) {
+        const msg = "Connection closed unexpectedly. Please refresh the page.";
+        setErrorMessage(msg);
+        toast.error(msg);
+      }
     };
 
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setIsConnected(false);
+      const msg = "Connection error. Please check your network and try again.";
+      setErrorMessage(msg);
+      toast.error(msg);
     };
 
     wsRef.current = ws;
@@ -374,7 +421,22 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="max-w-4xl mx-auto space-y-4">
-                {messages.length === 0 && (
+                {errorMessage && (
+                  <div className="flex items-start gap-3 p-3 bg-red-900/20 border border-red-800/40 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-red-500 mt-2 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-red-300">{errorMessage}</p>
+                    </div>
+                    <button
+                      onClick={() => setErrorMessage(null)}
+                      className="p-1 hover:bg-red-900/40 rounded transition shrink-0"
+                    >
+                      <X className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
+                )}
+
+                {messages.length === 0 && !errorMessage && (
                   <div className="text-center py-12 text-zinc-500">
                     <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p>{t('emptyChat')}</p>
@@ -549,7 +611,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !isLoading && sendMessage()}
-                    placeholder={waitingForAnswer ? t('answerPlaceholder') : isLoading ? t('executing') : t('placeholder')}
+                    placeholder={waitingForAnswer ? t('answerPlaceholder') : isLoading ? t('executing') : (dynamicPlaceholder || t('placeholder'))}
                     className="flex-1 px-4 py-3 bg-zinc-900 rounded-lg border border-zinc-800 focus:outline-none focus:border-blue-500"
                     disabled={!isConnected || (isLoading && !waitingForAnswer)}
                   />
