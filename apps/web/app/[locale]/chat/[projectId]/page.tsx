@@ -58,6 +58,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dynamicPlaceholder, setDynamicPlaceholder] = useState<string>("");
   const wasConnectedRef = useRef(false);
+  const errorShownRef = useRef(false);
 
   // Load default model on mount
   useEffect(() => {
@@ -131,6 +132,7 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
     ws.onopen = () => {
       setIsConnected(true);
       wasConnectedRef.current = true;
+      errorShownRef.current = false;
       setErrorMessage(null);
       console.log("WebSocket connected");
 
@@ -241,23 +243,25 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setIsConnected(false);
+      const wasClean = event && event.wasClean;
       wasConnectedRef.current = false;
-      // Only show error if we were previously connected — clean close after completion is normal
-      if (errorMessage === null) {
+      // Show error only if: not a clean close, no error already shown via onerror,
+      // AND we had an active connection
+      if (!wasClean && !errorShownRef.current && errorMessage === null) {
         const msg = "Connection closed unexpectedly. Please refresh the page.";
         setErrorMessage(msg);
         toast.error(msg);
       }
+      errorShownRef.current = false;
     };
 
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setIsConnected(false);
-      const msg = "Connection error. Please check your network and try again.";
-      setErrorMessage(msg);
-      toast.error(msg);
+      // Mark that an error occurred so onclose knows not to show a duplicate
+      errorShownRef.current = true;
     };
 
     wsRef.current = ws;
