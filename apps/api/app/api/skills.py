@@ -61,6 +61,7 @@ def _parse_skill_frontmatter(skill_dir: Path) -> Optional[dict]:
 
 
 @router.get("")
+@router.get("/")
 def list_skills(project_id: Optional[str] = Query(None)):
     """List global and (optionally) project-level skills."""
     skills: list[dict] = []

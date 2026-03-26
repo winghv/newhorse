@@ -28,6 +28,7 @@ class AgentConfig:
     allowed_tools: List[str] = field(default_factory=lambda: [
         "Read", "Write", "Edit", "Bash", "Glob", "Grep"
     ])
+    preferred_cli: Optional[str] = None
 
     # Source tracking for debugging
     config_source: str = "default"
@@ -42,12 +43,13 @@ class AgentConfig:
             skills=data.get("skills", []),
             model=data.get("model", cls.model),
             allowed_tools=data.get("allowed_tools", ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]),
+            preferred_cli=data.get("preferred_cli"),
             config_source=source,
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
-        return {
+        data = {
             "name": self.name,
             "description": self.description,
             "system_prompt": self.system_prompt,
@@ -55,6 +57,9 @@ class AgentConfig:
             "model": self.model,
             "allowed_tools": self.allowed_tools,
         }
+        if self.preferred_cli:
+            data["preferred_cli"] = self.preferred_cli
+        return data
 
 
 def _parse_yaml_file(path: Path) -> Optional[Dict[str, Any]]:
@@ -87,6 +92,34 @@ def get_global_template_path(agent_type: str) -> Path:
 
     # Return builtin path as default (even if doesn't exist)
     return builtin_path
+
+
+def get_skill_directories(project_path: str, config: AgentConfig) -> List[str]:
+    """Resolve global, project, and explicitly referenced skill directories."""
+    skill_dirs: List[str] = []
+
+    global_skills_dir = Path(settings.project_root) / "extensions" / "skills"
+    if global_skills_dir.exists():
+        skill_dirs.append(str(global_skills_dir))
+
+    project_skills_dir = Path(project_path) / ".claude" / "skills"
+    if project_skills_dir.exists():
+        skill_dirs.append(str(project_skills_dir))
+
+    for skill in config.skills:
+        project_skill_dir = project_skills_dir / skill
+        if project_skill_dir.exists():
+            resolved = str(project_skill_dir)
+            if resolved not in skill_dirs:
+                skill_dirs.append(resolved)
+
+        global_skill_dir = global_skills_dir / skill
+        if global_skill_dir.exists():
+            resolved = str(global_skill_dir)
+            if resolved not in skill_dirs:
+                skill_dirs.append(resolved)
+
+    return skill_dirs
 
 
 def load_agent_config(
@@ -232,7 +265,7 @@ def list_global_templates() -> List[Dict[str, Any]]:
     # Builtin templates: extensions/agents/
     builtin_dir = Path(settings.project_root) / "extensions" / "agents"
     if builtin_dir.exists():
-        for agent_dir in builtin_dir.iterdir():
+        for agent_dir in sorted(builtin_dir.iterdir(), key=lambda path: path.name):
             if not agent_dir.is_dir():
                 continue
             config_path = agent_dir / "agent.yaml"
@@ -244,12 +277,13 @@ def list_global_templates() -> List[Dict[str, Any]]:
                     "description": data.get("description", ""),
                     "path": str(config_path),
                     "source": "builtin",
+                    "preferred_cli": data.get("preferred_cli"),
                 })
 
     # User-created templates: data/agents/
     user_dir = Path(settings.agents_root)
     if user_dir.exists():
-        for agent_dir in user_dir.iterdir():
+        for agent_dir in sorted(user_dir.iterdir(), key=lambda path: path.name):
             if not agent_dir.is_dir():
                 continue
             config_path = agent_dir / "agent.yaml"
@@ -261,6 +295,7 @@ def list_global_templates() -> List[Dict[str, Any]]:
                     "description": data.get("description", ""),
                     "path": str(config_path),
                     "source": "user",
+                    "preferred_cli": data.get("preferred_cli"),
                 })
 
     return templates

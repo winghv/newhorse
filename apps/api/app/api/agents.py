@@ -1,9 +1,14 @@
 """
 Agents API router
 """
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+import os
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models.projects import Project
 from app.services.cli import agent_manager
 from app.services.cli.config_loader import (
     list_global_templates,
@@ -28,6 +33,7 @@ class AgentConfigRequest(BaseModel):
     skills: list[str] = []
     model: str = "claude-sonnet-4-5-20250929"
     allowed_tools: list[str] = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+    preferred_cli: str | None = None
 
 
 @router.get("/")
@@ -139,15 +145,17 @@ def delete_template(template_id: str):
 
 
 @router.get("/projects/{project_id}/config")
-def get_project_agent_config(project_id: str):
+def get_project_agent_config(project_id: str, db: Session = Depends(get_db)):
     """Get agent configuration for a project."""
-    import os
     project_path = os.path.join(settings.projects_root, project_id)
 
     if not os.path.exists(project_path):
         raise HTTPException(status_code=404, detail="Project not found")
 
     config = load_agent_config(project_path)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project and not config.preferred_cli:
+        config.preferred_cli = project.preferred_cli
 
     return {
         "project_id": project_id,
@@ -157,13 +165,19 @@ def get_project_agent_config(project_id: str):
 
 
 @router.post("/projects/{project_id}/config")
-def save_project_agent_config(project_id: str, request: AgentConfigRequest):
+def save_project_agent_config(project_id: str, request: AgentConfigRequest, db: Session = Depends(get_db)):
     """Save agent configuration for a project."""
-    import os
     project_path = os.path.join(settings.projects_root, project_id)
 
     if not os.path.exists(project_path):
         raise HTTPException(status_code=404, detail="Project not found")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    existing_config = load_agent_config(project_path)
+    preferred_cli = request.preferred_cli or existing_config.preferred_cli or project.preferred_cli
 
     config = AgentConfig(
         name=request.name,
@@ -172,6 +186,7 @@ def save_project_agent_config(project_id: str, request: AgentConfigRequest):
         skills=request.skills,
         model=request.model,
         allowed_tools=request.allowed_tools,
+        preferred_cli=preferred_cli,
         config_source=f"project:{project_id}",
     )
 
@@ -190,9 +205,8 @@ def save_project_agent_config(project_id: str, request: AgentConfigRequest):
 
 
 @router.post("/projects/{project_id}/config/from-template")
-def apply_template_to_project(project_id: str, template_id: str):
+def apply_template_to_project(project_id: str, template_id: str, db: Session = Depends(get_db)):
     """Apply a global template to a project."""
-    import os
     project_path = os.path.join(settings.projects_root, project_id)
 
     if not os.path.exists(project_path):
@@ -209,6 +223,14 @@ def apply_template_to_project(project_id: str, template_id: str):
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to apply template")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project:
+        if template_config.preferred_cli:
+            project.preferred_cli = template_config.preferred_cli
+        if template_config.model:
+            project.selected_model = template_config.model
+        db.commit()
 
     return {
         "success": True,

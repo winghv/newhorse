@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.terminal_ui import ui
 from app.models.messages import Message
 from app.services.cli.base import BaseCLI, MODEL_MAPPING
-from app.services.cli.config_loader import load_agent_config
+from app.services.cli.config_loader import load_agent_config, get_skill_directories
 from app.services.cli.delegation import create_delegation_tool
 from app.common.messages import get_message
 
@@ -65,11 +65,7 @@ class ButlerAgent(BaseCLI):
         else:
             cli_model = MODEL_MAPPING.get(config.model, config.model)
 
-        # Skills directories
-        add_dirs = []
-        global_skills_dir = os.path.join(settings.project_root, "extensions", "skills")
-        if os.path.exists(global_skills_dir):
-            add_dirs.append(global_skills_dir)
+        add_dirs = get_skill_directories(project_path, config)
 
         # Note: MCP delegation server is set by execute_with_streaming (with event callback).
         # Use self._delegation_server if already created, otherwise create a bare one.

@@ -18,11 +18,22 @@ from claude_agent_sdk.types import AssistantMessage, ResultMessage, TextBlock, T
 
 from app.core.config import settings
 from app.core.terminal_ui import ui
-from app.services.cli.config_loader import load_agent_config, AgentConfig
+from app.services.cli.config_loader import load_agent_config, AgentConfig, get_skill_directories
 from app.services.cli.base import MODEL_MAPPING
 
 # Valid specialist agent types
-SPECIALIST_AGENTS = {"planner", "coder", "researcher", "reviewer", "writer"}
+SPECIALIST_AGENTS = {
+    "planner",
+    "coder",
+    "researcher",
+    "reviewer",
+    "writer",
+    "trend-researcher",
+    "topic-strategist",
+    "content-producer",
+    "compliance-reviewer",
+    "distribution-operator",
+}
 
 
 async def run_specialist_agent(
@@ -54,6 +65,7 @@ async def run_specialist_agent(
         system_prompt=f"You are a {agent_type} specialist.",
     )
     config = load_agent_config(project_path, agent_type=agent_type, default_config=default_config)
+    add_dirs = get_skill_directories(project_path, config)
 
     cli_model = MODEL_MAPPING.get(config.model, config.model)
 
@@ -80,6 +92,7 @@ async def run_specialist_agent(
         cwd=project_path,
         model=cli_model,
         allowed_tools=config.allowed_tools,
+        add_dirs=add_dirs,
         permission_mode="bypassPermissions",
         env=env,
     )
@@ -134,7 +147,8 @@ def create_delegation_tool(project_id: str, on_event: Optional[Callable[[dict], 
     @tool(
         "delegate_task",
         "Delegate a task to a specialist agent on your team. "
-        "Available agents: planner, coder, researcher, reviewer, writer. "
+        "Available agents: planner, coder, researcher, reviewer, writer, "
+        "trend-researcher, topic-strategist, content-producer, compliance-reviewer, distribution-operator. "
         "The specialist will execute the task in the project workspace and return results.",
         {
             "agent": str,

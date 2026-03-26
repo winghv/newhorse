@@ -35,6 +35,7 @@ interface AgentTemplate {
   name: string;
   description: string;
   source?: string;
+  preferred_cli?: string | null;
 }
 
 interface ActivityItem {
@@ -178,7 +179,9 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: projectName,
-          preferred_cli: isAgentMode ? "hello" : "system-agent",
+          preferred_cli: isAgentMode
+            ? selectedAgentInfo?.preferred_cli || "hello"
+            : "system-agent",
         }),
       });
 
@@ -357,6 +360,7 @@ export default function Home() {
             {/* Textarea + submit */}
             <div className="relative">
               <textarea
+                data-testid="project-create-input"
                 ref={textareaRef}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -375,6 +379,7 @@ export default function Home() {
               />
               {/* Submit button */}
               <button
+                data-testid="project-create-submit"
                 onClick={createProject}
                 disabled={!canCreate || creating}
                 className={`absolute right-3 bottom-3 w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer ${
@@ -404,6 +409,7 @@ export default function Home() {
                       <button
                         key={tpl.id}
                         type="button"
+                        data-testid={`template-pill-${tpl.id}`}
                         onClick={() => toggleAgent(tpl.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150 cursor-pointer ${
                           selectedAgent === tpl.id
@@ -437,6 +443,7 @@ export default function Home() {
                       <button
                         key={tpl.id}
                         type="button"
+                        data-testid={`template-pill-${tpl.id}`}
                         onClick={() => toggleAgent(tpl.id)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all duration-150 cursor-pointer ${
                           selectedAgent === tpl.id
@@ -542,6 +549,7 @@ export default function Home() {
             {/* Butler — Personal Assistant */}
             {butlerProject && (
               <div
+                data-testid={`project-card-${butlerProject.id}`}
                 onClick={() => navigateToChat(butlerProject)}
                 className="mb-4 flex items-center gap-4 p-4 bg-gradient-to-r from-violet-500/5 to-blue-500/5 rounded-xl border border-violet-500/20 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/5 transition-all duration-200 cursor-pointer group"
               >
@@ -566,6 +574,7 @@ export default function Home() {
                 {regularProjects.map((project, index) => (
                   <div
                     key={project.id}
+                    data-testid={`project-card-${project.id}`}
                     onClick={() => navigateToChat(project)}
                     style={{
                       animation: `fadeInUp 0.3s ease-out ${index * 50}ms both`,
@@ -594,6 +603,12 @@ export default function Home() {
                     )}
                     <div className="flex items-center gap-2 mt-auto pt-3 pl-6">
                       <span className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded-full">
+                        {project.preferred_cli}
+                      </span>
+                      <span
+                        data-testid={`project-runtime-${project.id}`}
+                        className="hidden"
+                      >
                         {project.preferred_cli}
                       </span>
                       <span className="text-xs text-zinc-600">

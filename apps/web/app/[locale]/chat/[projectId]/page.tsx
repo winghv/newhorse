@@ -88,6 +88,10 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
       .then((project) => {
         // Map agent type/template to placeholder text
         const agentPlaceholders: Record<string, { en: string; zh: string }> = {
+          "butler": {
+            en: "What workflow should I coordinate for you?",
+            zh: "今天要我统筹什么工作流？",
+          },
           "code-reviewer": {
             en: "What code do you want reviewed?",
             zh: "你想审查什么代码？",
@@ -386,10 +390,11 @@ export default function ChatPage({ params }: { params: { projectId: string } }) 
               }}
             />
           </div>
-          <button
-            onClick={() => setShowConfigPanel(!showConfigPanel)}
-            className={`p-2 rounded-lg transition ${
-              showConfigPanel ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
+        <button
+          data-testid="chat-config-toggle"
+          onClick={() => setShowConfigPanel(!showConfigPanel)}
+          className={`p-2 rounded-lg transition ${
+            showConfigPanel ? "bg-blue-600 text-white" : "hover:bg-zinc-800"
             }`}
             title={t('agentConfig')}
           >

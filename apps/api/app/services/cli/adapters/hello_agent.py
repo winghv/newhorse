@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.terminal_ui import ui
 from app.core.skill_watcher import get_skill_watcher
 from ..base import BaseCLI, MODEL_MAPPING
-from ..config_loader import load_agent_config, AgentConfig
+from ..config_loader import load_agent_config, AgentConfig, get_skill_directories
 
 
 # Default system prompt for the Hello Agent (fallback)
@@ -98,24 +98,7 @@ class HelloAgent(BaseCLI):
 
         ui.debug(f"Model: {cli_model}", "HelloAgent")
 
-        # Build list of directories to include
-        add_dirs = []
-
-        # Global skills directory
-        global_skills_dir = os.path.join(settings.project_root, "extensions", "skills")
-        if os.path.exists(global_skills_dir):
-            add_dirs.append(global_skills_dir)
-
-        # Project-level skills directory
-        project_skills_dir = os.path.join(project_path, ".claude", "skills")
-        if os.path.exists(project_skills_dir):
-            add_dirs.append(project_skills_dir)
-
-        # Add skill directories from config
-        for skill in config.skills:
-            skill_dir = os.path.join(settings.project_root, "extensions", "skills", skill)
-            if os.path.exists(skill_dir) and skill_dir not in add_dirs:
-                add_dirs.append(skill_dir)
+        add_dirs = get_skill_directories(project_path, config)
 
         if add_dirs:
             ui.debug(f"Skills directories: {add_dirs}", "HelloAgent")

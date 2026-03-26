@@ -1,0 +1,7 @@
+interface:
+  display_name: "Media Ops Team"
+  short_description: "Maintain the built-in media operations agent team and workflow"
+  brand_color: "#14532D"
+  default_prompt: "Use the media ops team skill to update templates, publishing gates, and workflow tests"
+policy:
+  allow_implicit_invocation: true

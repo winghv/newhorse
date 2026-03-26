@@ -90,13 +90,16 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
   // Apply template
   const applyTemplate = async (templateId: string) => {
     try {
-      const res = await fetch(`/api/agents/templates/${templateId}`);
+      const res = await fetch(
+        `/api/agents/projects/${projectId}/config/from-template?template_id=${templateId}`,
+        { method: "POST" }
+      );
       if (res.ok) {
-        const data = await res.json();
-        setConfig(data.config);
+        await fetchConfig();
         setSelectedTemplate(templateId);
         setShowTemplateDropdown(false);
-        toast.success(t('templateApplied', { name: data.config.name }));
+        const appliedTemplate = templates.find((tpl) => tpl.id === templateId);
+        toast.success(t('templateApplied', { name: appliedTemplate?.name || templateId }));
       }
     } catch (err) {
       toast.error(t('templateFailed'));
@@ -162,6 +165,7 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
       <div className="relative">
         <label className="block text-sm text-zinc-400 mb-1">{t('templateLabel')}</label>
         <button
+          data-testid="agent-config-template-toggle"
           onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
           className="w-full flex items-center justify-between px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg hover:border-zinc-600 transition"
         >
@@ -179,6 +183,7 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
             {templates.map((tpl) => (
               <button
                 key={tpl.id}
+                data-testid={`agent-config-template-option-${tpl.id}`}
                 onClick={() => applyTemplate(tpl.id)}
                 className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition flex items-center justify-between"
               >
@@ -200,6 +205,7 @@ export function AgentConfig({ projectId, onConfigChange, className }: AgentConfi
         <div>
           <label className="block text-sm text-zinc-400 mb-1">{t('nameLabel')}</label>
           <input
+            data-testid="agent-config-name-input"
             type="text"
             value={config.name}
             onChange={(e) => setConfig({ ...config, name: e.target.value })}
