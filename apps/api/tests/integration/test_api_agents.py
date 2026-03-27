@@ -60,6 +60,89 @@ class TestAgentTemplates:
         data = resp.json()
         assert data["config"]["preferred_cli"] == "butler"
 
+    def test_media_ops_butler_exposes_quality_workflow_skills(self, client):
+        """The upgraded media ops butler wires in quality and video workflow skills."""
+        resp = client.get("/api/agents/templates/media-ops-butler")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "benchmark-analysis" in skill_ids
+        assert "angle-design" in skill_ids
+        assert "competitive-review" in skill_ids
+        assert "performance-retrospective" in skill_ids
+        assert "short-video-production" in skill_ids
+        assert "midlong-video-production" in skill_ids
+        assert "video-asset-planning" in skill_ids
+        assert "minimax-narration-postproduction" in skill_ids
+        assert "licensed-footage-sourcing" in skill_ids
+        assert "video-postproduction-assembly" in skill_ids
+        assert "xiaohongshu-short-video-packaging" in skill_ids
+        assert "douyin-short-video-packaging" in skill_ids
+        assert "kuaishou-short-video-packaging" in skill_ids
+        assert "bilibili-midform-video-packaging" in skill_ids
+
+    def test_content_producer_exposes_video_routing_skills(self, client):
+        """The content producer template carries the new video-routing and packaging skills."""
+        resp = client.get("/api/agents/templates/content-producer")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "content-production" in skill_ids
+        assert "video-asset-planning" in skill_ids
+        assert "minimax-narration-postproduction" in skill_ids
+        assert "licensed-footage-sourcing" in skill_ids
+        assert "video-postproduction-assembly" in skill_ids
+        assert "short-video-production" in skill_ids
+        assert "midlong-video-production" in skill_ids
+        assert "xiaohongshu-short-video-packaging" in skill_ids
+        assert "douyin-short-video-packaging" in skill_ids
+        assert "kuaishou-short-video-packaging" in skill_ids
+        assert "bilibili-midform-video-packaging" in skill_ids
+
+    def test_video_production_director_exposes_execution_stack(self, client):
+        """The video production director template can run narrated video production end to end."""
+        resp = client.get("/api/agents/templates/video-production-director")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "content-production" in skill_ids
+        assert "video-asset-planning" in skill_ids
+        assert "licensed-footage-sourcing" in skill_ids
+        assert "minimax-narration-postproduction" in skill_ids
+        assert "video-postproduction-assembly" in skill_ids
+        assert "short-video-production" in skill_ids
+        assert "midlong-video-production" in skill_ids
+        assert "bilibili-midform-video-packaging" in skill_ids
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "run_render_workflow.py" in prompt
+        assert "--content-id" in prompt
+        assert "../../../extensions/skills/video-postproduction-assembly/scripts/run_render_workflow.py" in prompt
+
+    def test_quality_specialist_templates_are_discoverable(self, client):
+        """New media ops specialists appear in the built-in template list."""
+        resp = client.get("/api/agents/templates")
+        assert resp.status_code == 200
+
+        template_ids = {tpl["id"] for tpl in resp.json()["templates"]}
+        assert "benchmark-analyst" in template_ids
+        assert "angle-designer" in template_ids
+        assert "competitive-reviewer" in template_ids
+        assert "performance-analyst" in template_ids
+        assert "video-production-director" in template_ids
+
+    def test_distribution_operator_prefers_render_manifest_publish_bundle(self, client):
+        """Distribution operator should resolve publish assets from render manifests before upload."""
+        resp = client.get("/api/agents/templates/distribution-operator")
+        assert resp.status_code == 200
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "run_publish_workflow.py" in prompt
+        assert "render-manifest" in prompt
+        assert "publish-manifest-auto.json" in prompt
+        assert "publish-result-auto.json" in prompt
+        assert "--live" in prompt
+
     def test_applying_template_updates_project_runtime_and_model(self, client, sample_project):
         """Applying a template syncs project preferred_cli and selected_model."""
         project_id = sample_project["id"]
