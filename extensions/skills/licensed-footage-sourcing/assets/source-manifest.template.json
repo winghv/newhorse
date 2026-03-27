@@ -1,0 +1,83 @@
+{
+  "project_id": "",
+  "content_id": "",
+  "deliverable_type": "midlong-video",
+  "platform": "",
+  "status": "draft",
+  "source_policy": {
+    "allowed_source_types": [
+      "public-domain",
+      "stock-library",
+      "brand-owned",
+      "official-promo-footage"
+    ],
+    "blocked_source_types": [
+      "unauthorized-creator-reupload",
+      "unknown-license",
+      "pirated-compilation"
+    ]
+  },
+  "clip_queries": [
+    {
+      "chapter_id": "",
+      "shot_purpose": "",
+      "keywords": {
+        "zh": [],
+        "en": [],
+        "variants": []
+      },
+      "source_types": []
+    }
+  ],
+  "source_manifest": [
+    {
+      "clip_id": "",
+      "chapter_id": "",
+      "shot_purpose": "",
+      "source_type": "",
+      "source_name": "",
+      "source_url": "",
+      "license_status": "approved",
+      "license_basis": "",
+      "attribution_required": false,
+      "attribution_text": "",
+      "usage_scope": [
+        "b-roll"
+      ],
+      "in_point": "",
+      "out_point": "",
+      "editorial_risk": "low",
+      "usage_notes": "",
+      "fallback_query": "",
+      "fallback_clip_id": ""
+    }
+  ],
+  "license_summary": {
+    "approved_count": 0,
+    "hold_count": 0,
+    "rejected_count": 0,
+    "needs_attribution_count": 0
+  },
+  "attribution_notes": [],
+  "hold_items": [
+    {
+      "clip_id": "",
+      "reason": "",
+      "next_action": ""
+    }
+  ],
+  "assembly_suggestions": [
+    {
+      "chapter_id": "",
+      "recommended_clip_ids": [],
+      "editing_notes": ""
+    }
+  ],
+  "fallback_options": [
+    {
+      "chapter_id": "",
+      "fallback_type": "screen-capture",
+      "description": ""
+    }
+  ]
+}

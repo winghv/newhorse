@@ -182,7 +182,7 @@ Open [http://localhost:3999](http://localhost:3999).
 | **Code Assistant** | General dev | Broad coding help across languages |
 | **Writing Assistant** | Editing | Proofreading, style, tone adjustment |
 
-Example built-in team: `Media Ops Butler` for multi-account content operations across research, topic selection, production, review, and publishing. See [docs/media-ops-team.md](docs/media-ops-team.md).
+Example built-in team: `Media Ops Butler` for multi-account content operations across research, benchmark analysis, angle design, production, review, publishing, and retrospectives. It now routes short video and mid/long video through platform-specific skills instead of producing one generic media package. See [docs/media-ops-team.md](docs/media-ops-team.md).
 
 **Want more?** Create your own agent in seconds — just define a YAML config and a system prompt.
 

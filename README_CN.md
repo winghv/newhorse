@@ -176,7 +176,7 @@ cp .env.example .env && npm install && npm run dev
 | **Code Assistant** | 编程助手 | 跨语言通用编程辅助 |
 | **Writing Assistant** | 写作助手 | 校对、风格调整、润色 |
 
-内置示例团队：`Media Ops Butler`，用于多账号内容运营，从研究、选题、制作、审核到发布整条流水线自动化。见 [docs/media-ops-team.md](docs/media-ops-team.md)。
+内置示例团队：`Media Ops Butler`，用于多账号内容运营，从研究、对标拆解、角度设计、制作、审核、发布到复盘整条流水线自动化。现在视频制作会按短视频/中长视频和平台 skill 路由，不再只产出一份泛化内容包。见 [docs/media-ops-team.md](docs/media-ops-team.md)。
 
 **想要更多？** 几秒钟就能创建你自己的 Agent —— 只需定义一份 YAML 配置和系统提示词。
 
