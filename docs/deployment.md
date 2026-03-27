@@ -8,7 +8,7 @@ This guide covers deploying Newhorse to production.
 
 ```bash
 # Required
-API_PORT=8080
+API_PORT=8999
 DATABASE_URL=mysql+pymysql://user:pass@host:3306/newhorse
 PROJECTS_ROOT=/data/projects
 THS_TIER=prod
@@ -57,7 +57,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/api/app ./app
 
 # Run with gunicorn
-CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8080"]
+CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8999"]
 ```
 
 ### Dockerfile (Frontend)
@@ -91,7 +91,7 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
     ports:
-      - "8080:8080"
+      - "8999:8999"
     environment:
       - DATABASE_URL=mysql+pymysql://user:pass@db:3306/newhorse
       - REDIS_URL=redis://redis:6379/0
@@ -134,7 +134,7 @@ volumes:
 Create `apps/api/gunicorn.conf.py`:
 
 ```python
-bind = "0.0.0.0:8080"
+bind = "0.0.0.0:8999"
 workers = 4
 worker_class = "uvicorn.workers.UvicornWorker"
 timeout = 120

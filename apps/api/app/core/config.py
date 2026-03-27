@@ -53,7 +53,7 @@ def _resolve_sqlite_url(env_key: str, default_subpath: str) -> str:
 class Settings(BaseModel):
     """Application settings"""
 
-    api_port: int = int(os.getenv("API_PORT", "8080"))
+    api_port: int = int(os.getenv("API_PORT", "8999"))
 
     # Database
     database_url: str = _resolve_sqlite_url(

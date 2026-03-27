@@ -15,7 +15,7 @@ const proc = spawn(venvPython, [
     '-m', 'uvicorn',
     'app.main:app',
     '--host', '0.0.0.0',
-    '--port', process.env.API_PORT || '8080',
+    '--port', process.env.API_PORT || '8999',
     '--reload'
 ], {
     cwd: apiDir,
