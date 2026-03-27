@@ -82,6 +82,9 @@
 6. 如果是 Butler / specialist 在 `data/projects/<project-id>` 里执行，默认走 `video-production-director` 内置的 runner 命令，而不是手动拼 ffmpeg
 7. 发布前可以先运行 `/media-publish-package data/media-ops/<content-id> --account-name <account>`，自动从最新 `render-manifest` 生成 `publish-manifest-auto.json`
 8. 默认发布 workflow 走 `/media-publish data/media-ops/<content-id> --account-name <account>`，它会自动回填 `publish-result-auto.json`；只有显式加 `--live` 才允许真实发布
+9. 每天或每轮批量生产结束后运行 `/media-artifacts-audit data/media-ops`，统一生成 `_registry/artifact-registry.json` 和 `_registry/artifact-registry.md`，用于查看缺失项、状态分布和整改优先级
+10. 对版本堆积的内容包运行 `/media-artifacts-compact data/media-ops/<content-id> --apply`，把非关键 manifest/result 归档到 `publish/archive/`，保留最新与里程碑版本
+11. 如果希望一键完成治理，直接运行 `/media-artifacts-maintain data/media-ops --apply`，它会自动执行 `audit -> compact -> re-audit`
 
 更正式的阶段输入输出和运行时约束，见 [media-ops-workflow-spec.md](/Users/mac/VscodeProjects/newhorse/docs/media-ops-workflow-spec.md)。
 

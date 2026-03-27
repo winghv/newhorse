@@ -49,7 +49,7 @@ def build_manifest_args(args: argparse.Namespace, project_root: Path) -> argpars
 
 def build_bilibili_command(project_root: Path, manifest: dict[str, Any]) -> list[str]:
     metadata = manifest["metadata"]
-    video_path = project_root / manifest["asset_paths"][0]
+    video_path = resolve_asset_path(project_root, manifest["asset_paths"][0])
     command = [
         "sau",
         "bilibili",
@@ -72,6 +72,54 @@ def build_bilibili_command(project_root: Path, manifest: dict[str, Any]) -> list
     if schedule:
         command.extend(["--schedule", schedule])
     return command
+
+
+def resolve_asset_path(project_root: Path, raw_path: str) -> Path:
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def build_xiaohongshu_note_command(project_root: Path, manifest: dict[str, Any]) -> list[str]:
+    metadata = manifest["metadata"]
+    raw_assets = manifest.get("asset_paths") or []
+    image_paths = [str(resolve_asset_path(project_root, raw_path)) for raw_path in raw_assets]
+    if not image_paths:
+        raise ValueError("Xiaohongshu note publishing requires at least one image asset.")
+
+    command = [
+        "sau",
+        "xiaohongshu",
+        "upload-note",
+        "--account",
+        manifest["account_name"],
+        "--images",
+        *image_paths,
+        "--title",
+        metadata["title"],
+    ]
+    note = metadata.get("note")
+    if note:
+        command.extend(["--note", note])
+    tags = metadata.get("tags") or []
+    if tags:
+        command.extend(["--tags", ",".join(tags)])
+    schedule = manifest.get("schedule")
+    if schedule:
+        command.extend(["--schedule", schedule])
+    return command
+
+
+def build_command(project_root: Path, manifest: dict[str, Any]) -> tuple[list[str], list[str]]:
+    platform = manifest.get("platform")
+    content_type = manifest.get("content_type", "video")
+
+    if platform == "bilibili":
+        return build_bilibili_command(project_root, manifest), ["sau", "bilibili", "check", "--account", manifest["account_name"]]
+    if platform == "xiaohongshu" and content_type == "note":
+        return build_xiaohongshu_note_command(project_root, manifest), ["sau", "xiaohongshu", "check", "--account", manifest["account_name"]]
+    raise NotImplementedError(f"Unsupported publish route: platform={platform}, content_type={content_type}")
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -101,8 +149,21 @@ def result_payload(
     upload_stdout: str | None = None,
     upload_stderr: str | None = None,
 ) -> dict[str, Any]:
+    content_type = manifest.get("content_type", "video")
+    asset_paths = manifest.get("asset_paths") or []
+    assets: dict[str, Any] = {
+        "voiceover": manifest.get("render_context", {}).get("voiceover"),
+        "subtitles": manifest.get("render_context", {}).get("subtitles"),
+    }
+    if content_type == "note":
+        assets["images"] = asset_paths
+    else:
+        assets["video"] = asset_paths[0] if asset_paths else None
+        assets["cover"] = asset_paths[1] if len(asset_paths) > 1 else None
+
     return {
         "platform": manifest["platform"],
+        "content_type": content_type,
         "content_id": manifest["content_id"],
         "version": manifest["version"],
         "mode": mode,
@@ -112,12 +173,7 @@ def result_payload(
             "account_name": manifest.get("account_name"),
             "status": account_status or manifest.get("account_status", "pending_check"),
         },
-        "assets": {
-            "video": manifest["asset_paths"][0] if manifest.get("asset_paths") else None,
-            "cover": manifest["asset_paths"][1] if len(manifest.get("asset_paths", [])) > 1 else None,
-            "voiceover": manifest.get("render_context", {}).get("voiceover"),
-            "subtitles": manifest.get("render_context", {}).get("subtitles"),
-        },
+        "assets": assets,
         "metadata": manifest.get("metadata", {}),
         "command_preview": command_preview,
         "blocking_reasons": manifest.get("blocking_reasons", []),
@@ -171,10 +227,7 @@ def main() -> int:
     result_path = resolve_result_path(project_root, args.result_output)
     result_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if manifest["platform"] != "bilibili":
-        raise NotImplementedError(f"Unsupported platform for publish runner: {manifest['platform']}")
-
-    command_preview = build_bilibili_command(project_root, manifest)
+    command_preview, check_command = build_command(project_root, manifest)
     mode = "live" if args.live else "dry_run"
 
     if not args.live:
@@ -198,7 +251,7 @@ def main() -> int:
         result_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         raise SystemExit("Publish manifest is not ready for live publish.")
 
-    check_result = run_command(["sau", "bilibili", "check", "--account", manifest["account_name"]])
+    check_result = run_command(check_command)
     account_status = check_result.stdout.strip() or "unknown"
     try:
         upload_result = run_command(command_preview)

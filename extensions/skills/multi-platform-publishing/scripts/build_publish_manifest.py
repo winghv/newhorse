@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a publish manifest from a media package and render manifest."""
+"""Build a publish manifest from a media package."""
 
 from __future__ import annotations
 
@@ -26,7 +26,13 @@ def resolve_candidate(root: Path, raw_path: str | None) -> Path | None:
 
 
 def relative_to_root(path: Path, root: Path) -> str:
-    return str(path.resolve().relative_to(root.resolve()))
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    try:
+        return str(resolved_path.relative_to(resolved_root))
+    except ValueError:
+        # Some assets (for example shared screenshots) may live outside the package root.
+        return str(resolved_path)
 
 
 def default_media_ops_root() -> Path:
@@ -41,8 +47,20 @@ def resolve_project_root(args: argparse.Namespace) -> Path:
 
 
 def find_content_packet(project_root: Path) -> Path | None:
-    candidates = sorted((project_root / "content").glob("*video.json"))
-    return candidates[0] if candidates else None
+    content_dir = project_root / "content"
+    if not content_dir.exists():
+        return None
+
+    candidates = sorted(content_dir.glob("*.json"))
+    if not candidates:
+        return None
+
+    for suffix in ("video.json", "note.json", "content-packet.json"):
+        matched = [candidate for candidate in candidates if candidate.name.endswith(suffix)]
+        if matched:
+            return matched[0]
+
+    return candidates[0]
 
 
 def find_latest_publish_manifest(project_root: Path) -> Path | None:
@@ -75,12 +93,79 @@ def derive_version_label(video_path: Path) -> str:
     return stem
 
 
-def metadata_complete(metadata: dict[str, Any], asset_paths: list[str], platform: str) -> bool:
+def infer_content_type(content_packet: dict[str, Any], content_packet_path: Path | None, platform: str) -> str:
+    packet_format = str(content_packet.get("format") or "").lower()
+    deliverable_type = str(content_packet.get("deliverable_type") or "").lower()
+    filename = content_packet_path.stem.lower() if content_packet_path else ""
+
+    if packet_format == "note" or deliverable_type in {"note", "image-note", "graphic-note"}:
+        return "note"
+    if "note" in filename:
+        return "note"
+    if deliverable_type in {"video", "short-video", "midlong-video"}:
+        return "video"
+    if "video" in filename:
+        return "video"
+    if platform == "bilibili":
+        return "video"
+    return "video"
+
+
+def collect_note_assets(project_root: Path, content_packet: dict[str, Any], previous_manifest: dict[str, Any]) -> list[str]:
+    raw_paths: list[str] = []
+
+    content_asset_paths = content_packet.get("asset_paths")
+    if isinstance(content_asset_paths, list):
+        raw_paths.extend(str(item) for item in content_asset_paths if item)
+
+    image_plan = content_packet.get("image_plan")
+    if isinstance(image_plan, list):
+        for item in image_plan:
+            if isinstance(item, str) and item:
+                raw_paths.append(item)
+            elif isinstance(item, dict):
+                raw_path = item.get("path") or item.get("image_path")
+                if raw_path:
+                    raw_paths.append(str(raw_path))
+
+    if not raw_paths:
+        previous_assets = previous_manifest.get("asset_paths")
+        if isinstance(previous_assets, list):
+            raw_paths.extend(str(item) for item in previous_assets if item)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for raw_path in raw_paths:
+        candidate = resolve_candidate(project_root, raw_path)
+        if candidate is None or not candidate.exists():
+            continue
+        resolved = relative_to_root(candidate, project_root)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(resolved)
+    return deduped
+
+
+def normalize_publish_mode(mode: str | None) -> str:
+    if not mode:
+        return "dry_run_only"
+    if mode == "immediate":
+        return "immediate_live_publish"
+    if mode == "scheduled":
+        return "scheduled_publish"
+    return mode
+
+
+def metadata_complete(metadata: dict[str, Any], asset_paths: list[str], platform: str, content_type: str) -> bool:
     title = bool(metadata.get("title"))
-    description = bool(metadata.get("description"))
     tags = metadata.get("tags") or []
     if platform == "bilibili":
+        description = bool(metadata.get("description"))
         return title and description and bool(tags) and bool(asset_paths) and bool(metadata.get("partition"))
+    if platform == "xiaohongshu" and content_type == "note":
+        return title and bool(metadata.get("note")) and bool(asset_paths)
+    description = bool(metadata.get("description"))
     return title and description and bool(asset_paths)
 
 
@@ -112,44 +197,79 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
 
     content_packet_path = find_content_packet(project_root)
     content_packet = load_json(content_packet_path)
-    render_manifest_path = project_root / "content" / "postproduction" / "render-manifest.json"
-    render_manifest = load_json(render_manifest_path)
-    if not render_manifest:
-        raise FileNotFoundError(f"Missing render manifest: {render_manifest_path}")
-
     review_gate_path = project_root / "review" / "review-gate.json"
     review_gate = load_json(review_gate_path)
     previous_manifest_path = find_latest_publish_manifest(project_root)
     previous_manifest = load_json(previous_manifest_path)
     publish_metadata = content_packet.get("publish_metadata", {})
 
-    final_cut_path = resolve_candidate(project_root, render_manifest.get("output", {}).get("video"))
-    if final_cut_path is None or not final_cut_path.exists():
-        raise FileNotFoundError("Render manifest does not point to an existing final cut.")
+    platform_candidates = content_packet.get("platforms") or []
+    if not platform_candidates and content_packet.get("platform"):
+        platform_candidates = [content_packet.get("platform")]
+    platform = args.platform or (platform_candidates[0] if platform_candidates else previous_manifest.get("platform"))
+    if not platform:
+        raise ValueError("Unable to resolve publishing platform from args/content/previous manifest.")
 
-    cover_asset = find_cover_asset(project_root, previous_manifest, publish_metadata)
-    asset_paths = [relative_to_root(final_cut_path, project_root)]
-    if cover_asset is not None:
-        asset_paths.append(relative_to_root(cover_asset, project_root))
-
-    platform = args.platform or (content_packet.get("platforms") or [previous_manifest.get("platform")])[0]
+    content_type = infer_content_type(content_packet, content_packet_path, platform)
     account_name = args.account_name or previous_manifest.get("account_name")
     approval_status = args.approval_status or review_gate.get("approval_status") or previous_manifest.get("approval_status")
-    version = derive_version_label(final_cut_path)
     previous_metadata = previous_manifest.get("metadata", {})
-    metadata = {
-        "title": (content_packet.get("title_variants") or [previous_metadata.get("title")])[0],
-        "description": content_packet.get("video_description") or previous_metadata.get("description"),
-        "tags": publish_metadata.get("tags") or previous_metadata.get("tags") or [],
-        "cover_text": content_packet.get("cover_text") or previous_metadata.get("cover_text"),
-        "partition": publish_metadata.get("partition") or previous_metadata.get("partition"),
-        "partition_name": publish_metadata.get("partition_name") or previous_metadata.get("partition_name"),
-        "thumbnail_path": relative_to_root(cover_asset, project_root) if cover_asset is not None else previous_metadata.get("thumbnail_path"),
-        "pinned_comment": content_packet.get("pinned_comment") or previous_metadata.get("pinned_comment"),
-    }
+    render_context: dict[str, Any] = {}
 
-    publish_mode = args.publish_mode or previous_manifest.get("publish_mode") or "dry_run_only"
-    metadata_is_complete = metadata_complete(metadata, asset_paths, platform)
+    if content_type == "video":
+        render_manifest_path = project_root / "content" / "postproduction" / "render-manifest.json"
+        render_manifest = load_json(render_manifest_path)
+        if not render_manifest:
+            raise FileNotFoundError(f"Missing render manifest: {render_manifest_path}")
+
+        final_cut_path = resolve_candidate(project_root, render_manifest.get("output", {}).get("video"))
+        if final_cut_path is None or not final_cut_path.exists():
+            raise FileNotFoundError("Render manifest does not point to an existing final cut.")
+
+        cover_asset = find_cover_asset(project_root, previous_manifest, publish_metadata)
+        asset_paths = [relative_to_root(final_cut_path, project_root)]
+        if cover_asset is not None:
+            asset_paths.append(relative_to_root(cover_asset, project_root))
+
+        version = derive_version_label(final_cut_path)
+        metadata = {
+            "title": (content_packet.get("title_variants") or [previous_metadata.get("title")])[0],
+            "description": content_packet.get("video_description") or previous_metadata.get("description"),
+            "tags": publish_metadata.get("tags") or previous_metadata.get("tags") or [],
+            "cover_text": content_packet.get("cover_text") or previous_metadata.get("cover_text"),
+            "partition": publish_metadata.get("partition") or previous_metadata.get("partition"),
+            "partition_name": publish_metadata.get("partition_name") or previous_metadata.get("partition_name"),
+            "thumbnail_path": relative_to_root(cover_asset, project_root) if cover_asset is not None else previous_metadata.get("thumbnail_path"),
+            "pinned_comment": content_packet.get("pinned_comment") or previous_metadata.get("pinned_comment"),
+        }
+        render_context = {
+            "render_manifest": relative_to_root(render_manifest_path, project_root),
+            "final_cut": relative_to_root(final_cut_path, project_root),
+            "duration_seconds": render_manifest.get("output", {}).get("duration_seconds"),
+            "voiceover": render_manifest.get("inputs", {}).get("voiceover_audio"),
+            "subtitles": render_manifest.get("inputs", {}).get("subtitles"),
+        }
+        notes = [
+            "自动从 render-manifest 解析当前 final cut。",
+            "发布素材路径优先使用最新渲染结果，而不是手工挑选旧版文件。",
+        ]
+    else:
+        asset_paths = collect_note_assets(project_root, content_packet, previous_manifest)
+        title_variants = content_packet.get("title_variants") or []
+        version = previous_manifest.get("version") or (content_packet_path.stem if content_packet_path else project_root.name)
+        metadata = {
+            "title": content_packet.get("title") or (title_variants[0] if title_variants else previous_metadata.get("title")),
+            "note": content_packet.get("note") or content_packet.get("caption") or previous_metadata.get("note"),
+            "tags": content_packet.get("tags") or publish_metadata.get("tags") or previous_metadata.get("tags") or [],
+            "cover_text": content_packet.get("cover_suggestion") or content_packet.get("cover_text") or previous_metadata.get("cover_text"),
+        }
+        notes = [
+            "图文发布素材优先使用 content packet 的 image_plan。",
+            "未提供图片时会回退到历史 publish manifest 的素材路径。",
+        ]
+
+    publish_mode = normalize_publish_mode(args.publish_mode or previous_manifest.get("publish_mode"))
+    metadata_is_complete = metadata_complete(metadata, asset_paths, platform, content_type)
     safe_to_publish = bool(review_gate.get("safe_to_publish", approval_status in {"approved", "pass"}))
     decision = "dry_run_only"
     blocking_reasons: list[str] = []
@@ -175,6 +295,7 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
 
     manifest = {
         "platform": platform,
+        "content_type": content_type,
         "content_id": args.content_id or project_root.name,
         "version": version,
         "account_name": account_name,
@@ -187,17 +308,8 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         "metadata_complete": metadata_is_complete,
         "decision": decision,
         "blocking_reasons": blocking_reasons,
-        "render_context": {
-            "render_manifest": relative_to_root(render_manifest_path, project_root),
-            "final_cut": relative_to_root(final_cut_path, project_root),
-            "duration_seconds": render_manifest.get("output", {}).get("duration_seconds"),
-            "voiceover": render_manifest.get("inputs", {}).get("voiceover_audio"),
-            "subtitles": render_manifest.get("inputs", {}).get("subtitles"),
-        },
-        "notes": [
-            "自动从 render-manifest 解析当前 final cut。",
-            "发布素材路径优先使用最新渲染结果，而不是手工挑选旧版文件。",
-        ],
+        "render_context": render_context,
+        "notes": notes,
     }
     return manifest, output_path
 

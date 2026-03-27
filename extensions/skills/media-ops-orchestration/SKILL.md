@@ -59,6 +59,8 @@ version: 1.0.0
 10. 合规审核阶段输出 `review gate` 与 `approval_status`。
 11. 发布阶段输出 `publish manifest` 和结果日志。
 12. 复盘阶段回填表现数据、结论和下一轮调整建议。
+13. 批量生产后运行 `python3 extensions/skills/media-ops-orchestration/scripts/audit_artifacts.py --media-ops-root data/media-ops`，生成统一 registry，优先整改缺失 required artifacts 的内容包。
+14. 对 manifest/result 版本堆积的内容包，运行 `python3 extensions/skills/media-ops-orchestration/scripts/compact_publish_artifacts.py --project-root data/media-ops/<content-id> --apply`，保留关键版本并归档其余历史文件。
 
 ## Handoff Contract
 

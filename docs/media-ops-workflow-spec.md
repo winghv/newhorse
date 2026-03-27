@@ -308,3 +308,7 @@
 - API 测试验证模板 metadata 与 runtime 同步
 - E2E 测试验证首页选模板创建项目、项目内套模板
 - 前端 build 和后端 pytest 必须通过
+- 产物治理检查必须可运行：`python3 extensions/skills/media-ops-orchestration/scripts/audit_artifacts.py --media-ops-root data/media-ops`
+- 批量生产场景建议追加 `--fail-on-missing-required`，把缺失关键产物的内容包直接拦截到整改队列
+- 版本治理建议在发布阶段后执行：`python3 extensions/skills/media-ops-orchestration/scripts/compact_publish_artifacts.py --project-root data/media-ops/<content-id> --apply`，保留关键版本并归档其余文件
+- 若要统一编排治理，可直接运行：`python3 extensions/skills/media-ops-orchestration/scripts/run_artifact_maintenance.py --media-ops-root data/media-ops --apply`
