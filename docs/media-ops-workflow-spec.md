@@ -4,6 +4,16 @@
 
 为 Newhorse 内置的媒体运营团队定义稳定、可审计、以作品竞争力为目标的自动化工作流。
 
+## Runtime Source Of Truth
+
+运行时配置真源只有：
+
+- `extensions/agents/`
+- `extensions/skills/`
+- `<project>/.claude/agent.yaml`
+
+`.agents/` 仅用于开发工具侧的技能包装和说明，不应承担产品运行时配置职责。
+
 ## Operating Modes
 
 系统支持两种运行模式：
@@ -16,6 +26,11 @@
   - 由外部主控 Agent 或人工主控驱动团队
   - 团队仍需交付同样的 handoff artifacts
   - 适合新工作流打磨、品牌敏感内容和高预算内容
+
+推荐模板映射：
+
+- `autonomous-team` -> `media-ops-butler`
+- `supervisor-led` -> `media-ops-supervisor`
 
 无论哪种模式，评分卡、审核状态、发布门禁和渲染记录都不能省略。
 

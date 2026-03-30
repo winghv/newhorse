@@ -1,0 +1,61 @@
+{
+  "platform": "xiaohongshu",
+  "account_name": "",
+  "objective": "",
+  "audience": [],
+  "account_positioning": {
+    "category": "",
+    "who_for": "",
+    "why_follow": ""
+  },
+  "content_pillars": [
+    {
+      "name": "",
+      "goal": "",
+      "formats": [
+        "note"
+      ],
+      "proof_assets": [],
+      "cadence_per_week": 0
+    }
+  ],
+  "series_lanes": [
+    {
+      "name": "",
+      "hook_pattern": "",
+      "save_trigger": "",
+      "comment_trigger": "",
+      "cta": ""
+    }
+  ],
+  "search_capture_terms": [],
+  "note_video_mix": {
+    "notes_per_week": 0,
+    "videos_per_week": 0,
+    "ratio_reasoning": ""
+  },
+  "publishing_cadence": {
+    "days": [],
+    "review_rhythm": ""
+  },
+  "comment_ops_plan": {
+    "reply_sla_hours": 24,
+    "seed_topics": [],
+    "pinned_comment_patterns": []
+  },
+  "north_star_metrics": {
+    "save_rate": "",
+    "profile_visit_rate": "",
+    "follow_conversion": "",
+    "qualified_inquiries": ""
+  },
+  "experiment_backlog": [
+    {
+      "hypothesis": "",
+      "metric": "",
+      "threshold": "",
+      "owner": ""
+    }
+  ],
+  "monthly_review_rhythm": ""
+}

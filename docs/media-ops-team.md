@@ -25,6 +25,7 @@
 | Template ID | 角色 | 负责内容 |
 | --- | --- | --- |
 | `media-ops-butler` | 总控 | 协调整条流水线，决定下一步该交给谁 |
+| `media-ops-supervisor` | 主控模板 | 面向 `supervisor-led` 模式，强调阶段批准、可审计交付物和人工复核 |
 | `trend-researcher` | 研究 | 趋势、竞品、评论区、历史表现、素材线索 |
 | `benchmark-analyst` | 对标拆解 | 拆头部内容的钩子、结构、证据、视觉与互动模式 |
 | `topic-strategist` | 选题 | 选题池、优先级、内容日历、单条 brief |
@@ -77,6 +78,7 @@
 ## 如何使用
 
 1. 在首页选择 `Media Ops Butler`
+1.1. 如果你要跑 `supervisor-led`，优先选择 `Media Ops Supervisor`；如果你要跑自治批量生产，优先选择 `Media Ops Butler`
 2. 输入你的运营目标，例如平台、账号、受众、节奏、现有素材
 3. 如果目标平台包含小红书，先让 Butler 产出账号定位、内容支柱、图文/短视频配比和评论区运营简报
 4. Butler 会按阶段调度 specialist，并在项目目录里逐步沉淀研究、对标、角度、内容、审核、发布和复盘产物
@@ -94,6 +96,16 @@
 16. 如果希望一键完成治理，直接运行 `/media-artifacts-maintain data/media-ops --apply`，它会自动执行 `audit -> compact -> re-audit`
 
 更正式的阶段输入输出和运行时约束，见 [media-ops-workflow-spec.md](/Users/mac/VscodeProjects/newhorse/docs/media-ops-workflow-spec.md)。
+
+## 运行时真源
+
+运行时真正生效的配置只有这三类：
+
+- 全局模板：`extensions/agents/`
+- 全局技能：`extensions/skills/`
+- 项目覆盖：`<project>/.claude/agent.yaml`
+
+`.agents/` 只用于本地开发工具的技能元数据，不直接决定产品运行时行为。
 
 ## 视频流程说明
 

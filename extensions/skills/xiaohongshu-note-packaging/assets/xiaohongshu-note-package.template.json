@@ -1,0 +1,31 @@
+{
+  "platform": "xiaohongshu",
+  "format": "note",
+  "deliverable_type": "note",
+  "title_variants": [],
+  "cover_title": "",
+  "cover_visual_direction": "",
+  "page_plan": [
+    {
+      "page": 1,
+      "role": "hook",
+      "headline": "",
+      "supporting_text": "",
+      "visual_direction": "",
+      "evidence": "",
+      "handoff_note": ""
+    }
+  ],
+  "caption": "",
+  "first_comment": "",
+  "tag_suggestions": [],
+  "save_trigger": "",
+  "comment_trigger": "",
+  "follow_trigger": "",
+  "publish_metadata": {
+    "series_name": "",
+    "keywords": [],
+    "scheduled_window": "",
+    "companion_video": false
+  }
+}

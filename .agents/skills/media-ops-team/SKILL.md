@@ -14,6 +14,9 @@ This repo contains a built-in media operations agent team implemented through:
 - homepage template selection
 - project template application
 
+`.agents/` is not the runtime source of truth.
+Treat it as developer-tool metadata that should explain or package the runtime behavior defined in `extensions/agents/` and `extensions/skills/`.
+
 ## When to Use
 
 - adding or editing media operations templates

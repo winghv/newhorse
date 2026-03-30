@@ -48,9 +48,12 @@ class TestAgentTemplates:
 
         templates = resp.json()["templates"]
         media_team = next((tpl for tpl in templates if tpl["id"] == "media-ops-butler"), None)
+        media_supervisor = next((tpl for tpl in templates if tpl["id"] == "media-ops-supervisor"), None)
 
         assert media_team is not None
         assert media_team["preferred_cli"] == "butler"
+        assert media_supervisor is not None
+        assert media_supervisor["preferred_cli"] == "butler"
 
     def test_template_detail_preserves_preferred_cli(self, client):
         """Template detail returns preferred_cli for butler-backed templates."""
@@ -154,11 +157,22 @@ class TestAgentTemplates:
         assert resp.status_code == 200
 
         template_ids = {tpl["id"] for tpl in resp.json()["templates"]}
+        assert "media-ops-supervisor" in template_ids
         assert "benchmark-analyst" in template_ids
         assert "angle-designer" in template_ids
         assert "competitive-reviewer" in template_ids
         assert "performance-analyst" in template_ids
         assert "video-production-director" in template_ids
+
+    def test_media_ops_supervisor_template_is_explicitly_supervisor_led(self, client):
+        """Supervisor-led mode should have its own built-in template instead of living only in prose."""
+        resp = client.get("/api/agents/templates/media-ops-supervisor")
+        assert resp.status_code == 200
+
+        config = resp.json()["config"]
+        assert config["preferred_cli"] == "butler"
+        assert "media-ops-orchestration" in set(config["skills"])
+        assert "supervisor-led" in config["system_prompt"]
 
     def test_distribution_operator_prefers_render_manifest_publish_bundle(self, client):
         """Distribution operator should resolve publish assets from render manifests before upload."""
