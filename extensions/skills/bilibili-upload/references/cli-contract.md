@@ -64,3 +64,5 @@ sau bilibili upload-video \
 - `--tags` 使用逗号分隔
 - `--schedule` 走 `sau` 统一时间格式
 - 程序会自动准备和更新 `biliup`
+- 当前 `sau bilibili upload-video` 没有 `--thumbnail` / `--cover` 参数
+- media-ops workflow 如果需要自动封面，必须改走 repo-local Bilibili uploader wrapper，由它调用 `biliup upload --cover`

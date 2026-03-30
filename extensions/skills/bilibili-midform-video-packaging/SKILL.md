@@ -47,3 +47,6 @@ version: 1.0.0
 - 对讲解型 B 站视频，没有字幕包和旁白混音说明时，不算最终上传包
 - 如果最终要交付可上传成片，继续把包装结果交给 `video-postproduction-assembly`
 - 没有章节结构和封面方向时，不算最终上传包
+- `publish_metadata` 不能只写平台名；至少要补齐 `account_name`、`partition`、`partition_name`、`tags`、`cover_asset` 和 `upload_asset`
+- AI 判断力 / 职场成长这类 Bilibili 知识向内容，默认优先放 `知识 -> 职业职场 (209)`，不要再机械落到 `计算机技术`
+- 封面如果走 MiniMax 自动化，模型只负责无字底图；中文标题、标签和视觉层级必须走本地确定性叠加，避免中文失真

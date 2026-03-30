@@ -19,6 +19,7 @@ def make_video_package(project_root: Path) -> None:
     (project_root / "review").mkdir(parents=True, exist_ok=True)
     (project_root / "publish").mkdir(parents=True, exist_ok=True)
     (project_root / "retros").mkdir(parents=True, exist_ok=True)
+    (project_root / "sources").mkdir(parents=True, exist_ok=True)
 
     (project_root / "research" / "research-brief.md").write_text("# brief\n", encoding="utf-8")
     (project_root / "planning" / "topic-selection.json").write_text("{}", encoding="utf-8")
@@ -40,6 +41,14 @@ def make_video_package(project_root: Path) -> None:
         json.dumps({"approval_status": "pass", "safe_to_publish": True}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (project_root / "review" / "assembly-qa-report.json").write_text(
+        json.dumps({"status": "pass", "checks": {}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "planning" / "cognitive-punch-gate.json").write_text(
+        json.dumps({"status": "pass", "questions": {}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "publish" / "publish-manifest-auto.json").write_text(
         json.dumps({"platform": "bilibili", "decision": "ready_for_live_publish"}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -48,9 +57,29 @@ def make_video_package(project_root: Path) -> None:
         json.dumps({"status": "submitted", "mode": "live"}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (project_root / "publish" / "release-record.json").write_text(
+        json.dumps({"status": "live_submitted"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "retros" / "retro-plan.md").write_text("# retro\n", encoding="utf-8")
     (project_root / "retros" / "performance-summary.md").write_text("# perf\n", encoding="utf-8")
     (project_root / "retros" / "next-experiment-brief.json").write_text("{}", encoding="utf-8")
+    (project_root / "sources" / "source-manifest.json").write_text(
+        json.dumps({"source_manifest": [], "license_summary": {"approved_count": 0}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "sources" / "source-shortlist.json").write_text(
+        json.dumps({"results": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "sources" / "asset-ingest-manifest.json").write_text(
+        json.dumps({"ingested_assets": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "sources" / "chapter-coverage-report.json").write_text(
+        json.dumps({"overall_status": "pass", "chapters": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def make_note_package_with_gaps(project_root: Path) -> None:
@@ -126,6 +155,9 @@ def test_audit_artifacts_builds_registry_and_marks_gaps(tmp_path: Path) -> None:
     assert video_pkg["content_type"] == "video"
     assert video_pkg["publish"]["result_status"] == "submitted"
     assert video_pkg["missing_required"] == []
+    assert video_pkg["checks"]["source_manifest"]["present"] is True
+    assert video_pkg["checks"]["source_shortlist"]["present"] is True
+    assert video_pkg["checks"]["asset_ingest_manifest"]["present"] is True
 
     assert note_pkg["content_type"] == "note"
     assert note_pkg["lifecycle_status"] == "in_production"

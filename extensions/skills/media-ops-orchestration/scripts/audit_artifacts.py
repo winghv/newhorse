@@ -84,6 +84,11 @@ def detect_content_type(content_packet: dict[str, Any], content_packet_path: Pat
     return "video"
 
 
+def detect_deliverable_type(content_packet: dict[str, Any]) -> str:
+    packet = primary_packet(content_packet)
+    return str(packet.get("deliverable_type") or content_packet.get("deliverable_type") or "").lower()
+
+
 def detect_platforms(content_packet: dict[str, Any], latest_manifest: dict[str, Any]) -> list[str]:
     packet = primary_packet(content_packet)
     platforms: list[str] = []
@@ -125,11 +130,14 @@ class Requirement:
 def build_requirements(
     content_type: str,
     *,
+    deliverable_type: str,
+    platforms: list[str],
     publish_decision: str | None,
     publish_status: str | None,
 ) -> list[Requirement]:
     is_published = publish_status in {"success", "submitted"}
     publish_result_required = bool(publish_status) or publish_decision in {"ready_for_live_publish", "approve_publish"}
+    publish_stage_started = bool(publish_decision or publish_status)
     requirements = [
         Requirement("research_brief", "research/research-brief.md", True),
         Requirement("topic_selection", "planning/topic-selection.json", True),
@@ -138,6 +146,7 @@ def build_requirements(
         Requirement("competitive_scorecard", "review/competitive-scorecard.json", True),
         Requirement("review_gate", "review/review-gate.json", True),
         Requirement("publish_manifest", "publish/publish-manifest*.json", True),
+        Requirement("release_record", "publish/release-record.json", publish_stage_started),
         Requirement("publish_result", "publish/publish-result*.json", publish_result_required),
         Requirement("retro_plan", "retros/retro-plan.md", is_published),
         Requirement("performance_summary", "retros/performance-summary.md", False),
@@ -145,10 +154,23 @@ def build_requirements(
     ]
     if content_type == "video":
         requirements.append(Requirement("render_manifest", "content/postproduction/render-manifest.json", True))
+        requirements.append(Requirement("assembly_qa_report", "review/assembly-qa-report.json", publish_stage_started))
         requirements.append(Requirement("render_verification", "review/render-verification*.md", False))
+    if deliverable_type == "midlong-video":
+        requirements.append(Requirement("cognitive_punch_gate", "planning/cognitive-punch-gate.json", publish_stage_started))
+        requirements.append(Requirement("source_manifest", "sources/source-manifest.json", True))
+        requirements.append(Requirement("source_shortlist", "sources/source-shortlist.json", True))
+        requirements.append(Requirement("asset_ingest_manifest", "sources/asset-ingest-manifest.json", True))
+        requirements.append(Requirement("chapter_coverage_report", "sources/chapter-coverage-report.json", publish_stage_started))
+        requirements.append(Requirement("clip_query_sheet", "sources/clip-query-sheet.md", False))
     if content_type == "note":
         requirements.append(Requirement("auto_publish_manifest", "publish/publish-manifest-auto.json", False))
         requirements.append(Requirement("auto_publish_result", "publish/publish-result-auto.json", False))
+    if "xiaohongshu" in platforms and is_published:
+        requirements.append(Requirement("comment_insights", "retros/comment-insights.json", False))
+        requirements.append(Requirement("profile_visit_signal", "retros/profile-visit-signal.json", False))
+        requirements.append(Requirement("follow_conversion_readout", "retros/follow-conversion-readout.json", False))
+        requirements.append(Requirement("live_monitoring_checklist", "retros/live-monitoring-checklist.md", False))
     return requirements
 
 
@@ -197,8 +219,12 @@ def build_package_record(project_root: Path, media_ops_root: Path) -> dict[str, 
     publish_status = latest_result.get("status")
 
     content_type = detect_content_type(content_packet, content_packet_path)
+    deliverable_type = detect_deliverable_type(content_packet)
+    platforms = detect_platforms(content_packet, latest_manifest)
     requirements = build_requirements(
         content_type,
+        deliverable_type=deliverable_type,
+        platforms=platforms,
         publish_decision=publish_decision,
         publish_status=publish_status,
     )
@@ -244,13 +270,13 @@ def build_package_record(project_root: Path, media_ops_root: Path) -> dict[str, 
         warnings.append("missing_performance_summary_after_publish")
 
     packet = primary_packet(content_packet)
-    platforms = detect_platforms(content_packet, latest_manifest)
     stage_presence = {
         "research": any((project_root / "research").glob("*")),
         "benchmarks": any((project_root / "benchmarks").glob("*")),
         "planning": any((project_root / "planning").glob("*")),
         "angles": any((project_root / "angles").glob("*")),
         "content": any((project_root / "content").glob("*")),
+        "sources": any((project_root / "sources").glob("*")),
         "review": any((project_root / "review").glob("*")),
         "publish": any((project_root / "publish").glob("*")),
         "retros": any((project_root / "retros").glob("*")),
@@ -264,6 +290,7 @@ def build_package_record(project_root: Path, media_ops_root: Path) -> dict[str, 
         "content_id": project_root.name,
         "package_path": relative_to(project_root, media_ops_root),
         "content_type": content_type,
+        "deliverable_type": deliverable_type,
         "platforms": platforms,
         "objective": content_packet.get("objective") or packet.get("objective"),
         "core_angle": content_packet.get("core_angle") or packet.get("core_angle"),

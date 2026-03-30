@@ -25,6 +25,18 @@ description: 当 agent 需要通过已安装的 `sau` CLI 完成 Bilibili 登录
 3. 执行匹配的 `sau bilibili ...` 命令
 4. 如果命令失败，再看 `references/troubleshooting.md`
 
+如果这一步被 media-ops workflow 调用，上传后还要把以下信息回写到 `publish/release-record.json`：
+
+- 最新提交的视频路径
+- 封面路径
+- 平台返回的 `BVID/AID`（如果 CLI 返回）
+- 当前审核状态
+- 最新 `publish-result*.json` 路径
+
+补充约束：
+
+- 当前 `sau bilibili upload-video` 没有封面参数；media-ops workflow 需要走仓库内 wrapper，用 `biliup upload --cover` 自动补齐封面
+
 ## 命令选择建议
 
 - 用户没有登录信息，先让用户自己在本地终端执行 `login`

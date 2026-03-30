@@ -49,6 +49,16 @@ def make_sprawl_publish_files(project_root: Path) -> None:
     write_json(publish / "publish-result.json", {"status": "success", "mode": "live"})
     write_json(publish / "publish-result-auto.json", {"status": "submitted", "mode": "live"})
     write_json(publish / "publish-result-v2.json", {"status": "failed", "mode": "live"})
+    write_json(
+        publish / "release-record.json",
+        {
+            "status": "live_submitted",
+            "history": {
+                "manifest_paths": ["publish/publish-manifest-auto.json"],
+                "result_paths": ["publish/publish-result-auto.json"],
+            },
+        },
+    )
 
 
 def test_run_artifact_maintenance_compacts_sprawl_and_reaudits(tmp_path: Path) -> None:
