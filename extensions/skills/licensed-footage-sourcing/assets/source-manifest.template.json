@@ -29,11 +29,13 @@
       "source_types": []
     }
   ],
+  "source_shortlist": [],
   "source_manifest": [
     {
       "clip_id": "",
       "chapter_id": "",
       "shot_purpose": "",
+      "duration_seconds": 0,
       "source_type": "",
       "source_name": "",
       "source_url": "",
@@ -49,7 +51,10 @@
       "editorial_risk": "low",
       "usage_notes": "",
       "fallback_query": "",
-      "fallback_clip_id": ""
+      "fallback_clip_id": "",
+      "local_asset_path": "",
+      "uploader": "",
+      "uploader_url": ""
     }
   ],
   "license_summary": {

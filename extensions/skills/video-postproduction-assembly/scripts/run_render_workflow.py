@@ -40,10 +40,14 @@ def parse_args() -> argparse.Namespace:
         help="Verification markdown output path, relative to project root.",
     )
     parser.add_argument(
+        "--qa-report-output",
+        default="review/assembly-qa-report.json",
+        help="Assembly QA report output path, relative to project root.",
+    )
+    parser.add_argument(
         "--assembly-strategy",
-        default="retime_existing_cut",
         choices=["retime_existing_cut", "rebuild_timeline", "review_only"],
-        help="Assembly strategy to record in the render plan.",
+        help="Assembly strategy to record in the render plan. Defaults to content packet value or retime_existing_cut.",
     )
     parser.add_argument(
         "--max-speedup",
@@ -101,6 +105,7 @@ def main() -> int:
         {
             "render_manifest": str(render_manifest_path),
             "verification": str(verification_path),
+            "qa_report": str(project_root / plan["qa_report_output"]),
             "final_cut": str(project_root / plan["output_video"]),
         }
     )

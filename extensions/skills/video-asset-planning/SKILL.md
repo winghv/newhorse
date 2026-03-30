@@ -66,6 +66,7 @@ version: 1.0.0
 - `must_capture_list`
 - `existing_asset_reuse`
 - `source_manifest`
+- `chapter_coverage_targets`
 - `video_generation_quota`
 - `quota_snapshot`
 - `reserved_generation_slots`
@@ -77,6 +78,25 @@ version: 1.0.0
 - `music_strategy`
 - `no_gen_fallback`
 - `prompt_pack_if_approved`
+- `automation_execution_plan`
+
+## Workflow Runner
+
+如果项目里已经有 SVG 图卡、封面或其它确定性视觉资产，优先直接导出，而不是人工处理：
+
+```bash
+python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py \
+  --project-root data/media-ops/<content-id> \
+  --include-root-assets
+```
+
+这一步适用于：
+
+- `assets/graphics/*.svg`
+- `assets/*.svg`
+- 任何已经设计完成、只差标准化导出的项目内矢量资产
+
+对解释型视频，图卡导出属于确定性资产处理，不应和素材搜集或高成本生成混为一谈。
 
 ## Security Rules
 
@@ -91,5 +111,6 @@ version: 1.0.0
 - 对短视频，优先保证前 `1-3` 秒和前 `5-10` 秒的关键画面
 - 对中长视频，优先保证章节证据和过渡，而不是堆砌花哨镜头
 - 对中长视频，优先让网上合法片段承担情境、转场和气氛镜头，核心证明仍由自有素材或可验证证据承担
+- 对中长视频，每章都要给 `required_coverage_seconds`、候选素材数目标和 fallback
 - 任何获批的生成式素材都要说明它具体提高了哪一项竞争力
 - 单条内容默认不应吞掉当天大部分 MiniMax 视频额度；如果要用 `3+` 次，先给出更便宜方案为何不够用

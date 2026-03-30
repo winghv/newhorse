@@ -1,0 +1,23 @@
+{
+  "content_id": "",
+  "status": "revise",
+  "questions": {
+    "core_misbelief": "",
+    "risk_statement": "",
+    "mechanism": "",
+    "painful_scene": "",
+    "takeaway_template": ""
+  },
+  "score_by_dimension": {
+    "contrarian_force": 0,
+    "risk_clarity": 0,
+    "mechanism_clarity": 0,
+    "scene_specificity": 0,
+    "repeatable_lines": 0,
+    "save_value": 0
+  },
+  "issues": [],
+  "review_notes": [],
+  "approved_by": "",
+  "reviewed_at": ""
+}

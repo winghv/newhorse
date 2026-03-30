@@ -33,14 +33,16 @@ version: 1.1.0
 5. 再选择基础产出 skill：
    - 短视频：`short-video-production`
    - 中长视频：`midlong-video-production`
-6. 视频母稿完成后，再走 `minimax-narration-postproduction`，补齐旁白、字幕草案、混音说明和交付清单。
-7. 再按最终平台生成包装元数据和上传素材说明：
+6. 如果是解释型中长视频，先补 `planning/cognitive-punch-gate.json`，至少回答误区、风险、机制、场景和可带走模板。
+7. 视频母稿完成后，再走 `minimax-narration-postproduction`，补齐旁白、字幕草案、混音说明和交付清单。
+8. 再按最终平台生成包装元数据和上传素材说明：
+   - 小红书图文：`xiaohongshu-note-packaging`
    - 小红书短视频：`xiaohongshu-short-video-packaging`
    - 抖音短视频：`douyin-short-video-packaging`
    - 快手短视频：`kuaishou-short-video-packaging`
    - Bilibili 中长视频：`bilibili-midform-video-packaging`
-8. 如果上游已经有 rough cut 或可渲染母版，再走 `video-postproduction-assembly`，产出 final cut、render manifest 和 verification 记录。
-9. 非视频平台版本继续输出：
+9. 如果上游已经有 rough cut 或可渲染母版，再走 `video-postproduction-assembly`，产出 final cut、render manifest、assembly qa report 和 verification 记录。
+10. 非视频平台版本继续输出：
    - 标题/钩子（至少 2-3 个备选）
    - 正文/脚本
    - 视觉或镜头提示
@@ -48,7 +50,16 @@ version: 1.1.0
    - 保存/评论/转发触发点
    - CTA
    - 标签建议
-10. 生成素材清单、缺口说明和平台成片包。
+11. 生成素材清单、缺口说明和平台成片包。
+12. 对视频内容，再补一份 `automation execution plan`，明确哪些步骤走 sourcing runner、哪些走确定性导出、哪些走 render workflow。
+
+如果是小红书图文，必须额外输出：
+
+- 首图承诺
+- 页序规划
+- 每页 headline / supporting text / visual direction
+- 正文、首评、标签和评论诱因
+- 是否需要 companion video 或系列联动
 
 ## Required Output Fields
 
@@ -58,6 +69,7 @@ version: 1.1.0
 - `duration_target`
 - `aspect_ratio`
 - `master_script`
+- `cognitive_punch_gate`
 - `hook_variants`
 - `beat_sheet`
 - `narration_script`
@@ -70,7 +82,26 @@ version: 1.1.0
 - `assembly_strategy`
 - `render_plan`
 - `render_manifest`
+- `automation_execution_plan`
 - `platform_package`
+- `publish_metadata`
+- `asset_checklist`
+- `open_questions`
+
+如果是图文笔记，最终 `content packet` 最少包含：
+
+- `deliverable_type`
+- `title_variants`
+- `cover_title`
+- `cover_visual_direction`
+- `page_plan`
+- `caption`
+- `first_comment`
+- `tag_suggestions`
+- `save_trigger`
+- `comment_trigger`
+- `follow_trigger`
+- `publish_metadata`
 - `asset_checklist`
 - `open_questions`
 
@@ -78,13 +109,21 @@ version: 1.1.0
 
 - 先路由，再写稿；不要一上来就用一份通用脚本覆盖所有平台
 - 平台原生优先，不要跨平台复制粘贴
+- 小红书图文不是长文切片，必须先明确首图承诺和页序
 - 短视频先写前 3 秒，再写主体
 - 中长视频先写开场承诺、章节推进和切条点，再补完整细节
+- 解释型中长视频在进入配音前，必须先过 `cognitive punch gate`
 - 解释型视频默认要交付可执行的旁白和字幕，不允许只留“后面再补”
 - 中长视频默认优先使用合法来源的网上片段做 B-roll 和气氛镜头，再考虑 AI 视频
+- 中长视频的证据层默认优先使用结构化 prompt proof、图卡和来源可审计的素材，不把人工录屏当默认依赖
 - MiniMax 视频生成按稀缺资源处理。已知额度为每天 `6` 次、每次 `6` 秒时，默认只把它留给 `1-2` 个关键镜头
 - 如果已进入 final cut 阶段，必须把装配策略、渲染计划和验证记录结构化保存，而不是只交一个最终文件
+- 如果平台包装已经完成，必须同时补齐 `publish_metadata`，不要把账号、分区、标签和封面映射留到发布阶段临时猜
 - 任何事实性陈述都要能追溯到 brief 或研究资料
 - 高成本视频生成不是默认动作。脚本不过线、镜头替代方案存在、或生成收益不明确时，先不用
 - 需要额外素材时直接列出来，不要藏在文字里
 - 不只交一份“标准答案”，而要交付最有胜率的主版本和备选钩子
+
+解释型中长视频可直接用模板起草：
+
+- `extensions/skills/content-production/assets/cognitive-punch-gate.template.json`

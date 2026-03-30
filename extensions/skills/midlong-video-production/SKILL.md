@@ -34,6 +34,9 @@ version: 1.0.0
    - `sourced_clip_need`
    - `proof_assets`
    - `cutdown_candidate`
+   - `required_coverage_seconds`
+   - `minimum_candidates`
+   - `fallback`
 5. 给每一章配置片段检索 brief：
    - 画面意图
    - 查询关键词
@@ -51,6 +54,7 @@ version: 1.0.0
 - `aspect_ratio`
 - `cold_open`
 - `viewer_payoff`
+- `cognitive_punch_gate`
 - `chapter_outline`
 - `retention_beats`
 - `master_script`
@@ -59,6 +63,7 @@ version: 1.0.0
 - `a_roll_plan`
 - `b_roll_plan`
 - `clip_sourcing_brief`
+- `chapter_coverage_targets`
 - `source_manifest`
 - `proof_assets`
 - `cutdown_candidates`
@@ -71,9 +76,11 @@ version: 1.0.0
 - 开场要先兑现承诺，不要先讲背景故事
 - 每个章节都要推动理解，不允许“信息停滞段”
 - 视觉刷新默认不晚于 `20-30` 秒
+- 每章默认至少补一种证据：案例、常见错误动作、平台现象、反例或现实后果
 - 解释型中视频默认要有清晰旁白主线，不允许只靠配乐和 B-roll 组装
 - B-roll 不是装饰，而是帮助解释章节、转场或建立情境
 - 默认优先使用合法来源的网上片段，而不是先想文本生成视频
 - 如果已有 rough cut，可在母稿里直接说明后续应走 `retime_existing_cut` 还是 `rebuild_timeline`
 - 如果某一章没有证据和画面支撑，要回到素材规划阶段补齐
+- 如果某一章没有 `required_coverage_seconds`、候选素材数或 fallback，不算进入素材 sourcing gate
 - 这只是母稿，不直接等同于最终平台上传包

@@ -1,0 +1,28 @@
+{
+  "content_id": "",
+  "generated_at": "",
+  "overall_status": "revise",
+  "coverage_summary": {
+    "chapter_count": 0,
+    "pass_count": 0,
+    "revise_count": 0,
+    "block_count": 0
+  },
+  "chapters": [
+    {
+      "chapter_id": "",
+      "required_coverage_seconds": 0,
+      "shortlist_candidate_count": 0,
+      "approved_candidate_count": 0,
+      "shortlist_duration_seconds": 0,
+      "approved_duration_seconds": 0,
+      "longest_approved_asset_seconds": 0,
+      "minimum_candidates": 0,
+      "max_single_asset_seconds": 30,
+      "has_fallback": false,
+      "single_asset_risk": false,
+      "status": "revise",
+      "issues": []
+    }
+  ]
+}

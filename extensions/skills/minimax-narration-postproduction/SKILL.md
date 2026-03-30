@@ -55,6 +55,7 @@ version: 1.0.0
    - `master_script`
    - `narration_script`
    - `beat_sheet` 或 `chapter_outline`
+   - `cognitive_punch_gate`
    - `asset_source_map`
    - `generation_budget_decision`
 2. 先判断是否真的需要旁白：
@@ -80,6 +81,29 @@ version: 1.0.0
    - 保留命令、模型、voice_id、输入文本版本
 9. 如果 final cut 要进入真实渲染，继续把结果交给 `video-postproduction-assembly`，产出 `render_plan`、`render_manifest` 和 verification 记录。
 10. 如果当前轮不能执行生成，也要留下后续一键执行所需参数。
+
+## Workflow Runner
+
+如果当前项目已经有 `narration_script`，先把它整理成 MiniMax 可执行 handoff：
+
+```bash
+python3 extensions/skills/minimax-narration-postproduction/scripts/build_tts_handoff.py \
+  --project-root data/media-ops/<content-id>
+```
+
+这会产出：
+
+- `content/postproduction/voiceover-tts-input.txt`
+- `content/postproduction/voiceover-segments.json`
+- `content/postproduction/voiceover-profile.json`
+
+如果环境变量已就绪，再用官方已安装 toolkit 生成音频：
+
+```bash
+bash /Users/mac/.codex/skills/minimax-multimodal-toolkit/scripts/tts/generate_voice.sh \
+  generate content/postproduction/voiceover-segments.json \
+  -o content/postproduction/minimax-output/voiceover.mp3
+```
 
 ## Output Contract
 
@@ -123,6 +147,7 @@ version: 1.0.0
 - 有旁白脚本但字幕与口播不一致
 - 只给了 TTS 命令，没有给字幕源和混音说明
 - 使用了 MiniMax，但没有记录 voice_id、模型和输出文件位置
+- 解释型中长视频缺 `cognitive_punch_gate`，或 gate 还没通过
 
 ## Security Rules
 

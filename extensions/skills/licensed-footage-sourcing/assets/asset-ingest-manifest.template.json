@@ -1,0 +1,32 @@
+{
+  "content_id": "",
+  "generated_at": "",
+  "download_approved": false,
+  "download_limit": 0,
+  "provider_summary": {
+    "pexels": {
+      "queries_attempted": 0,
+      "results_found": 0
+    }
+  },
+  "ingested_assets": [
+    {
+      "clip_id": "",
+      "chapter_id": "",
+      "provider": "",
+      "source_url": "",
+      "download_url": "",
+      "local_path": "",
+      "file_size_bytes": 0,
+      "license_status": "approved",
+      "license_basis": "",
+      "attribution_required": false,
+      "attribution_text": "",
+      "usage_scope": [
+        "b-roll"
+      ],
+      "uploader": "",
+      "uploader_url": ""
+    }
+  ]
+}
