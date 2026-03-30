@@ -24,6 +24,8 @@ class TestListSkills:
         assert "minimax-narration-postproduction" in skill_ids
         assert "licensed-footage-sourcing" in skill_ids
         assert "video-postproduction-assembly" in skill_ids
+        assert "xiaohongshu-account-ops" in skill_ids
+        assert "xiaohongshu-note-packaging" in skill_ids
         assert "xiaohongshu-short-video-packaging" in skill_ids
         assert "douyin-short-video-packaging" in skill_ids
         assert "kuaishou-short-video-packaging" in skill_ids

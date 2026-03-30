@@ -70,6 +70,8 @@ class TestAgentTemplates:
         assert "angle-design" in skill_ids
         assert "competitive-review" in skill_ids
         assert "performance-retrospective" in skill_ids
+        assert "xiaohongshu-account-ops" in skill_ids
+        assert "xiaohongshu-note-packaging" in skill_ids
         assert "short-video-production" in skill_ids
         assert "midlong-video-production" in skill_ids
         assert "video-asset-planning" in skill_ids
@@ -82,12 +84,13 @@ class TestAgentTemplates:
         assert "bilibili-midform-video-packaging" in skill_ids
 
     def test_content_producer_exposes_video_routing_skills(self, client):
-        """The content producer template carries the new video-routing and packaging skills."""
+        """The content producer template carries the new note and video packaging skills."""
         resp = client.get("/api/agents/templates/content-producer")
         assert resp.status_code == 200
 
         skill_ids = set(resp.json()["config"]["skills"])
         assert "content-production" in skill_ids
+        assert "xiaohongshu-note-packaging" in skill_ids
         assert "video-asset-planning" in skill_ids
         assert "minimax-narration-postproduction" in skill_ids
         assert "licensed-footage-sourcing" in skill_ids
@@ -98,6 +101,32 @@ class TestAgentTemplates:
         assert "douyin-short-video-packaging" in skill_ids
         assert "kuaishou-short-video-packaging" in skill_ids
         assert "bilibili-midform-video-packaging" in skill_ids
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "小红书图文" in prompt
+        assert "页序" in prompt
+
+    def test_topic_strategist_exposes_xiaohongshu_account_ops_skill(self, client):
+        """Topic strategist should have the Xiaohongshu account operations strategy skill."""
+        resp = client.get("/api/agents/templates/topic-strategist")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "topic-selection" in skill_ids
+        assert "xiaohongshu-account-ops" in skill_ids
+
+    def test_performance_analyst_exposes_xiaohongshu_account_metrics(self, client):
+        """Performance analyst should carry Xiaohongshu-specific growth guidance."""
+        resp = client.get("/api/agents/templates/performance-analyst")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "performance-retrospective" in skill_ids
+        assert "xiaohongshu-account-ops" in skill_ids
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "收藏" in prompt
+        assert "关注转化" in prompt
 
     def test_video_production_director_exposes_execution_stack(self, client):
         """The video production director template can run narrated video production end to end."""

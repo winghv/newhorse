@@ -49,12 +49,14 @@
 - `topic-selection`
 - `angle-design`
 - `content-production`
+- `xiaohongshu-account-ops`
 - `video-asset-planning`
 - `minimax-narration-postproduction`
 - `licensed-footage-sourcing`
 - `video-postproduction-assembly`
 - `short-video-production`
 - `midlong-video-production`
+- `xiaohongshu-note-packaging`
 - `xiaohongshu-short-video-packaging`
 - `douyin-short-video-packaging`
 - `kuaishou-short-video-packaging`
@@ -76,15 +78,20 @@
 
 1. 在首页选择 `Media Ops Butler`
 2. 输入你的运营目标，例如平台、账号、受众、节奏、现有素材
-3. Butler 会按阶段调度 specialist，并在项目目录里逐步沉淀研究、对标、角度、内容、审核、发布和复盘产物
-4. 如果你已经配置了上传环境与账号状态，发布阶段会优先调用现有 upload skills
-5. 如果视频内容包已经具备 rough cut、旁白和字幕，也可以直接运行项目命令 `/media-render data/media-ops/<content-id>` 自动生成 `render-plan.json` 并执行后期装配
-6. 如果是 Butler / specialist 在 `data/projects/<project-id>` 里执行，默认走 `video-production-director` 内置的 runner 命令，而不是手动拼 ffmpeg
-7. 发布前可以先运行 `/media-publish-package data/media-ops/<content-id> --account-name <account>`，自动从最新 `render-manifest` 生成 `publish-manifest-auto.json`
-8. 默认发布 workflow 走 `/media-publish data/media-ops/<content-id> --account-name <account>`，它会自动回填 `publish-result-auto.json`；只有显式加 `--live` 才允许真实发布
-9. 每天或每轮批量生产结束后运行 `/media-artifacts-audit data/media-ops`，统一生成 `_registry/artifact-registry.json` 和 `_registry/artifact-registry.md`，用于查看缺失项、状态分布和整改优先级
-10. 对版本堆积的内容包运行 `/media-artifacts-compact data/media-ops/<content-id> --apply`，把非关键 manifest/result 归档到 `publish/archive/`，保留最新与里程碑版本
-11. 如果希望一键完成治理，直接运行 `/media-artifacts-maintain data/media-ops --apply`，它会自动执行 `audit -> compact -> re-audit`
+3. 如果目标平台包含小红书，先让 Butler 产出账号定位、内容支柱、图文/短视频配比和评论区运营简报
+4. Butler 会按阶段调度 specialist，并在项目目录里逐步沉淀研究、对标、角度、内容、审核、发布和复盘产物
+5. 如果你已经配置了上传环境与账号状态，发布阶段会优先调用现有 upload skills
+6. 如果中长视频需要自动找外部素材并把获批片段沉淀到生产链，运行 `/media-source-footage data/media-ops/<content-id> --download-approved`
+7. 如果项目里已有图卡、封面或其它 SVG 资产，先运行 `python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py --project-root data/media-ops/<content-id> --include-root-assets`，统一导出 PNG，而不是人工逐张处理
+8. 对解释型中长视频，在进入配音或装配前，先补齐 `planning/cognitive-punch-gate.json`、`sources/chapter-coverage-report.json` 和 `review/assembly-qa-report.json`
+9. 同时运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，确认 B-roll、图卡导出、proof pack 和 render workflow 的自动入口都已接通
+10. 如果视频内容包已经具备旁白 handoff，也可以直接运行项目命令 `/media-render data/media-ops/<content-id>` 自动生成字幕草案、必要时自动拼出基础时间线、写出 `render-plan.json`、`assembly-qa-report.json` 并执行后期装配
+11. 如果是 Butler / specialist 在 `data/projects/<project-id>` 里执行，默认走 `video-production-director` 内置的 runner 命令，而不是手动拼 ffmpeg
+12. 发布前可以先运行 `/media-publish-package data/media-ops/<content-id> --account-name <account>`，自动从最新 `render-manifest` 生成 `publish-manifest-auto.json`，并同步维护 `publish/release-record.json`
+13. 默认发布 workflow 走 `/media-publish data/media-ops/<content-id> --account-name <account>`，它会自动回填 `publish-result-auto.json`；只有显式加 `--live` 才允许真实发布
+14. 每天或每轮批量生产结束后运行 `/media-artifacts-audit data/media-ops`，统一生成 `_registry/artifact-registry.json` 和 `_registry/artifact-registry.md`，用于查看缺失项、状态分布和整改优先级
+15. 对版本堆积的内容包运行 `/media-artifacts-compact data/media-ops/<content-id> --apply`，把非关键 manifest/result 归档到 `publish/archive/`，保留最新与里程碑版本
+16. 如果希望一键完成治理，直接运行 `/media-artifacts-maintain data/media-ops --apply`，它会自动执行 `audit -> compact -> re-audit`
 
 更正式的阶段输入输出和运行时约束，见 [media-ops-workflow-spec.md](/Users/mac/VscodeProjects/newhorse/docs/media-ops-workflow-spec.md)。
 
@@ -95,18 +102,29 @@
 1. `content-production` 先判定这条内容是短视频还是中长视频，以及主投平台
 2. 如果是中长视频，优先用 `licensed-footage-sourcing` 规划网上合法可用片段，再进入素材策略
 3. `video-asset-planning` 先做素材策略和生成预算门禁
-4. 通用母稿由以下 skill 之一产出：
+4. 对解释型中长视频，先补 `cognitive punch gate`，再进入样音和后期
+5. 通用母稿由以下 skill 之一产出：
    - `short-video-production`
    - `midlong-video-production`
-5. `minimax-narration-postproduction` 再把母稿补成可执行的旁白、字幕和混音后期包
-6. 平台包装再交给以下 skill 之一：
+6. `minimax-narration-postproduction` 再把母稿补成可执行的旁白、字幕和混音后期包
+7. 如果最终交付物是小红书图文，直接走 `xiaohongshu-note-packaging`
+8. 视频场景的平台包装再交给以下 skill 之一：
    - `xiaohongshu-short-video-packaging`
    - `douyin-short-video-packaging`
    - `kuaishou-short-video-packaging`
    - `bilibili-midform-video-packaging`
-7. `video-postproduction-assembly` 把 rough cut、旁白、字幕和混音计划装配成 final cut，并写出 render manifest 与验证记录
+9. `video-postproduction-assembly` 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果没有 rough cut 且策略是 `rebuild_timeline`，则自动用图卡、proof pack 和已获批 B-roll 拼出基础时间线，再写出 render manifest、assembly qa report 与验证记录
 
 这样做的目的不是“多加几个 skill”，而是把平台原生差异落到可交接的最终产物里。
+
+如果目标平台是小红书，建议先额外产出一份账号运营简报，至少说明：
+
+- 账号定位与关注理由
+- 内容支柱和系列位
+- 图文 / 短视频配比
+- 搜索承接词
+- 评论区运营计划
+- 复盘指标和实验池
 
 ## 运行模式
 
@@ -141,14 +159,15 @@
 对“网上找视频片段来组装”这件事，默认要求也一样：
 
 - 优先公共版权库、已购素材库、品牌自有授权素材
-- 不抓取无授权创作者内容来充当 B-roll
 - 每个片段都要留下 `source manifest`，至少记录来源、用途、许可状态和是否需要署名
+- 如果已经下载到本地，还要留下 `asset-ingest-manifest`，记录本地路径和下载来源
 
 ## 建议输入
 
 为了让自动化更稳定，建议在第一次任务里提供这些信息：
 
 - 账号矩阵与平台
+- 小红书图文 / 短视频各自承担什么角色
 - 目标受众
 - 本周或本月目标
 - 想要对标的账号或作品类型
@@ -164,8 +183,12 @@
 - 竞争审校必须输出评分卡，总分和关键单项都过线才允许进入下一步
 - 缺少审批状态时，只做 dry-run
 - 缺少素材、cookie、账号映射时，不强行发布
-- 真实发布必须显式带 `--live`，并且 `publish-manifest-auto.json` 的 `decision` 已经是 `ready_for_live_publish`
+- 真实发布必须显式带 `--live`，并且 `publish-manifest-prelive.json` 或 `live-execution-plan.json` 已经明确 `ready_for_live_publish`
+- 批量投产前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_publish_queue.py --media-ops-root data/media-ops`，不要人工逐个翻目录判断是否能发
 - 对视频 final cut，缺少 `assembly_strategy`、`render_plan` 或 `render_manifest` 时，不算完成
+- 对 `rebuild_timeline` 视频，`auto-base-cut-plan.json` 缺失或 `quality.status != pass` 时，不得进入 live prep；发布队列里必须把它标成 `improve_auto_timeline_quality`
+- 对 Bilibili 中长视频，没有完整 `publish_metadata` 的账号、分区、标签和封面映射时，不算发布就绪
+- `publish/release-record.json` 是发布链路的唯一真源，不再允许多个 manifest/result 各自漂移
 - 发布结果文件必须脱敏，不能把 cookie、token、密钥写入项目目录
 - 不跨平台原样群发相同文案
 - 对未接入的平台，输出手工发布包或待接入方案
@@ -174,3 +197,8 @@
 - MiniMax 视频生成如果是每天 `6` 次、每次 `6` 秒，默认只留给最关键的 `1-2` 个镜头；中视频主体仍以合法片段、录屏、截图动效和旁白驱动
 - 对中长视频，默认优先用网上合法片段做 B-roll 组装；AI 视频只补关键且无法替代的镜头
 - 对解释型视频，默认要补齐旁白、字幕和混音说明；只有视频和配乐不算完成
+- 对旁白驱动视频，`assembly-qa-report.json` 必须额外校验 subtitle alignment drift；字幕存在但和口播边界对不齐，仍然不算过线
+- 对解释型中长视频，自治模式默认先跑自动 gate、自动 sourcing、自动导图和自动 render；人工 checkpoint 只属于 `supervisor-led` 复核层，不再是 Production 默认依赖
+- 对“AI 对话录屏”这类证据素材，默认先用结构化 prompt proof pack、图卡和可审计的 UI/文本资产替代；人工录屏只作为 fallback
+
+更细的小红书账号运营建议和交付模板见 [xiaohongshu-account-ops.md](/Users/mac/VscodeProjects/newhorse/docs/xiaohongshu-account-ops.md)。

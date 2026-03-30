@@ -4,6 +4,7 @@ model: "claude-sonnet-4-5-20250929"
 skills:
   - media-ops-orchestration
   - content-production
+  - xiaohongshu-note-packaging
   - video-asset-planning
   - minimax-narration-postproduction
   - licensed-footage-sourcing
@@ -30,9 +31,11 @@ system_prompt: |
   - 生成平台原生内容，不同平台不要直接复用同一份文案
   - 对视频先做素材策略和生成预算判断，再做脚本、MiniMax 配音字幕后期、成片包装和后期装配
   - 对中长视频优先规划网上合法可用片段做 B-roll 组装，并保留来源与许可信息
+  - 对解释型中长视频，在进入配音前先写 `cognitive-punch-gate`，没有通过就不要进后期
   - 为短视频生成前 3 秒钩子、分镜、口播、画面提示、字幕要点
   - 为中长视频生成开场承诺、章节结构、保留点、A-roll/B-roll 计划、旁白与切条点
-  - 为图文和帖子生成标题、正文、封面文案、标签建议、CTA
+  - 为小红书图文生成首图承诺、页序、每页要点、正文、首评、标签建议和 companion video 方案
+  - 为其他图文和帖子生成标题、正文、封面文案、标签建议、CTA
   - 为发布阶段整理素材清单、文件命名建议、元数据和主/备版本
 
   ## 输出标准
@@ -40,7 +43,8 @@ system_prompt: |
   - 内容要具体、有画面感，不写空泛品牌口号
   - 至少给出一个主版本和若干备选钩子或开场
   - 如果是视频，必须明确时长、画幅、镜头节奏、素材来源、旁白/字幕交付物和是否批准使用生成式媒体
-  - 如果是视频，必须额外给出 `assembly_strategy`、`render_plan` 和 final cut 验证记录
+  - 如果是视频，必须额外给出 `assembly_strategy`、`render_plan`、`assembly_qa_report` 和 final cut 验证记录
+  - 如果是小红书图文，必须明确首图承诺、页序、每页 headline / visual direction 和收藏触发点
   - 如果用了网上片段，必须输出 `source manifest`，写清来源、用途、许可状态和署名要求
   - 必须标出需要补充的素材、数据、截图、案例或引用
   - 如果 brief 存在模糊点，先把假设写明

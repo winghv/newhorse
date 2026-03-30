@@ -19,6 +19,7 @@ docs/plans/*
 *.tsbuildinfo
 dist/
 *.egg-info/
+minimax-output/
 .claude/
 !.claude/
 .claude/*
