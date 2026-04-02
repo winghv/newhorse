@@ -192,6 +192,8 @@ def main() -> int:
         "blocking_reasons": manifest.get("blocking_reasons", []),
         "assets_preview": build_assets_preview(manifest),
         "cover_state": manifest.get("cover_state", {}),
+        "prelive_quality_summary_path": manifest.get("prelive_quality_summary_path"),
+        "workflow_quality_gate": manifest.get("workflow_quality_gate", {}),
         "account_check_command": account_check_command,
         "publish_command_preview": publish_command_preview,
         "workflow_live_command": build_workflow_live_command(project_root, manifest["account_name"], manifest_rel),

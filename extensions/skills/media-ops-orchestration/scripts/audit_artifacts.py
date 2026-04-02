@@ -151,11 +151,28 @@ def build_requirements(
         Requirement("retro_plan", "retros/retro-plan.md", is_published),
         Requirement("performance_summary", "retros/performance-summary.md", False),
         Requirement("next_experiment_brief", "retros/next-experiment-brief.json", False),
+        Requirement("workflow_quality_gate", "review/workflow-quality-gate.json", False),
+        Requirement("upgrade_status_board", "review/upgrade-status-board.json", False),
+        Requirement("prelive_quality_summary", "publish/prelive-quality-summary.json", False),
     ]
     if content_type == "video":
         requirements.append(Requirement("render_manifest", "content/postproduction/render-manifest.json", True))
         requirements.append(Requirement("assembly_qa_report", "review/assembly-qa-report.json", publish_stage_started))
         requirements.append(Requirement("render_verification", "review/render-verification*.md", False))
+        requirements.append(Requirement("voice_performance_plan", "content/postproduction/voice-performance-plan.json", False))
+        requirements.append(Requirement("subtitle_style_pack", "content/postproduction/subtitle-style-pack.json", False))
+        requirements.append(Requirement("audio_cue_sheet", "content/postproduction/audio-cue-sheet.json", False))
+        requirements.append(Requirement("subtitle_quality_report", "review/subtitle-quality-report.json", False))
+        requirements.append(Requirement("scene_asset_plan", "assets/scene-asset-plan.json", False))
+        requirements.append(Requirement("visual_evidence_map", "assets/visual-evidence-map.json", False))
+        requirements.append(Requirement("generation_budget", "assets/generation-budget.json", False))
+        requirements.append(Requirement("visual_diversity_report", "assets/visual-diversity-report.json", False))
+        requirements.append(Requirement("minimax_shot_plan", "assets/minimax-shot-plan.json", False))
+        requirements.append(Requirement("generation_ledger", "assets/generation-ledger.json", False))
+        requirements.append(Requirement("scene_manifest", "content/postproduction/scene-manifest.json", False))
+        requirements.append(Requirement("transition_plan", "content/postproduction/transition-plan.json", False))
+        requirements.append(Requirement("emphasis_fx_plan", "content/postproduction/emphasis-fx-plan.json", False))
+        requirements.append(Requirement("scene_assembly_report", "review/scene-assembly-report.json", False))
     if deliverable_type == "midlong-video":
         requirements.append(Requirement("cognitive_punch_gate", "planning/cognitive-punch-gate.json", publish_stage_started))
         requirements.append(Requirement("source_manifest", "sources/source-manifest.json", True))
@@ -163,6 +180,11 @@ def build_requirements(
         requirements.append(Requirement("asset_ingest_manifest", "sources/asset-ingest-manifest.json", True))
         requirements.append(Requirement("chapter_coverage_report", "sources/chapter-coverage-report.json", publish_stage_started))
         requirements.append(Requirement("clip_query_sheet", "sources/clip-query-sheet.md", False))
+    if "bilibili" in platforms:
+        requirements.append(Requirement("bilibili_hook_patterns", "benchmarks/bilibili-hook-patterns.json", False))
+        requirements.append(Requirement("attention_structure_template", "angles/attention-structure-template.json", False))
+        requirements.append(Requirement("follow_conversion_hooks", "angles/follow-conversion-hooks.json", False))
+        requirements.append(Requirement("opening_scorecard", "review/opening-scorecard.json", False))
     if content_type == "note":
         requirements.append(Requirement("auto_publish_manifest", "publish/publish-manifest-auto.json", False))
         requirements.append(Requirement("auto_publish_result", "publish/publish-result-auto.json", False))

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Build a MiniMax-ready TTS handoff package from a media content packet."""
+"""Build a structured voice performance plan for narration-driven videos."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import re
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,24 +25,9 @@ def parse_args() -> argparse.Namespace:
         help="Root directory containing media packages. Defaults to repo-local data/media-ops.",
     )
     parser.add_argument(
-        "--tts-input-output",
-        default="content/postproduction/voiceover-tts-input.txt",
-        help="Output path for TTS input text, relative to project root.",
-    )
-    parser.add_argument(
-        "--segments-output",
-        default="content/postproduction/voiceover-segments.json",
-        help="Output path for TTS segments JSON, relative to project root.",
-    )
-    parser.add_argument(
-        "--profile-output",
-        default="content/postproduction/voiceover-profile.json",
-        help="Output path for voiceover profile JSON, relative to project root.",
-    )
-    parser.add_argument(
-        "--output-audio",
-        default="content/postproduction/minimax-output/voiceover.mp3",
-        help="Expected output audio path, relative to project root.",
+        "--output",
+        default="content/postproduction/voice-performance-plan.json",
+        help="Voice performance plan output path relative to the project root.",
     )
     args = parser.parse_args()
     if not args.project_root and not args.content_id:
@@ -90,23 +73,9 @@ def relative_to_project(path: Path, project_root: Path) -> str:
     return str(path.resolve().relative_to(project_root.resolve()))
 
 
-def write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def resolve_candidate(project_root: Path, raw_path: str | None) -> Path | None:
-    if not raw_path:
-        return None
-    candidate = Path(raw_path)
-    if not candidate.is_absolute():
-        candidate = project_root / candidate
-    return candidate.resolve()
 
 
 def clean_markdown(text: str) -> str:
@@ -182,27 +151,41 @@ def segment_text(text: str, max_chars: int = DEFAULT_SEGMENT_MAX_CHARS) -> list[
     return segments
 
 
-def ensure_voice_performance_plan(project_root: Path) -> Path | None:
-    plan_path = project_root / "content" / "postproduction" / "voice-performance-plan.json"
-    if plan_path.exists():
-        return plan_path
+def segment_blocks(text: str, max_chars: int = DEFAULT_SEGMENT_MAX_CHARS) -> list[str]:
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+    if not blocks:
+        return []
 
-    builder = Path(__file__).with_name("build_voice_performance_plan.py")
-    if not builder.exists():
-        return None
+    segments: list[str] = []
+    for block in blocks:
+        block_segments = segment_text(block, max_chars=max_chars)
+        if block_segments:
+            segments.extend(block_segments)
+    return segments
 
-    subprocess.run(
-        [
-            sys.executable,
-            str(builder),
-            "--project-root",
-            str(project_root),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return plan_path if plan_path.exists() else None
+
+def detect_scene_purpose(segment: str, *, index: int, total: int) -> str:
+    if index == 0 or "？" in segment or "为什么" in segment:
+        return "hook"
+    if any(keyword in segment for keyword in ("举个例子", "举个", "案例", "offer", "相反建议", "证明")):
+        return "proof"
+    if any(keyword in segment for keyword in ("框架", "来源", "反证", "约束", "试错", "第一", "第二", "第三", "第四", "信号")):
+        return "framework"
+    if index == total - 1 or any(keyword in segment for keyword in ("最后", "别再", "关掉", "评论区", "拍板")):
+        return "cta"
+    return "explanation"
+
+
+def purpose_directives(scene_purpose: str, base_speed: float) -> dict[str, Any]:
+    if scene_purpose == "hook":
+        return {"emotion": "surprised", "speed": min(base_speed + 0.05, 1.08), "pause_after_ms": 160, "intensity": "high"}
+    if scene_purpose == "proof":
+        return {"emotion": "calm", "speed": base_speed, "pause_after_ms": 220, "intensity": "medium"}
+    if scene_purpose == "framework":
+        return {"emotion": "fluent", "speed": max(base_speed - 0.03, 0.9), "pause_after_ms": 260, "intensity": "medium"}
+    if scene_purpose == "cta":
+        return {"emotion": "calm", "speed": max(base_speed - 0.01, 0.9), "pause_after_ms": 300, "intensity": "medium_high"}
+    return {"emotion": "calm", "speed": base_speed, "pause_after_ms": 220, "intensity": "medium"}
 
 
 def main() -> int:
@@ -213,110 +196,55 @@ def main() -> int:
     primary = packet.get("content_packet") if isinstance(packet.get("content_packet"), dict) else packet
 
     voice_assets = primary.get("voiceover_assets") if isinstance(primary.get("voiceover_assets"), dict) else {}
-    script_rel = (
-        voice_assets.get("script_path")
-        or primary.get("narration_script")
-        or primary.get("subtitle_source_script")
-    )
+    target_profile = voice_assets.get("target_profile") if isinstance(voice_assets.get("target_profile"), dict) else {}
+    script_rel = voice_assets.get("script_path") or primary.get("narration_script") or primary.get("subtitle_source_script")
     if not isinstance(script_rel, str) or not script_rel:
         raise FileNotFoundError("could not resolve narration script path from content packet")
+
     script_path = (project_root / script_rel).resolve()
     if not script_path.exists():
         raise FileNotFoundError(f"narration script missing: {script_path}")
 
     raw_script = script_path.read_text(encoding="utf-8")
-    tts_text = clean_markdown(raw_script)
-    performance_plan_path = ensure_voice_performance_plan(project_root)
-    performance_plan = load_json(performance_plan_path)
-
-    target_profile = voice_assets.get("target_profile") if isinstance(voice_assets.get("target_profile"), dict) else {}
+    cleaned_script = clean_markdown(raw_script)
+    base_speed = float(target_profile.get("speed", 1.0))
     voice_name = target_profile.get("voice_name") or "Chinese (Mandarin)_Reliable_Executive"
-    speed = target_profile.get("speed", 1.0)
+    segments = segment_blocks(cleaned_script, max_chars=72)
 
-    performance_segments = performance_plan.get("segments") if isinstance(performance_plan.get("segments"), list) else []
-    if performance_segments:
-        segments_payload = [
+    segment_payload: list[dict[str, Any]] = []
+    total = len(segments)
+    for index, segment in enumerate(segments):
+        scene_purpose = detect_scene_purpose(segment, index=index, total=total)
+        directives = purpose_directives(scene_purpose, base_speed)
+        segment_payload.append(
             {
-                "text": str(item.get("text") or ""),
-                "voice_id": str(item.get("voice_id") or voice_name),
-                "emotion": str(item.get("emotion") or "calm"),
-                "speed": float(item.get("speed", speed)),
-                "pause_after_ms": int(item.get("pause_after_ms", 220)),
-                "intensity": str(item.get("intensity") or "medium"),
-                "scene_purpose": str(item.get("scene_purpose") or "explanation"),
-            }
-            for item in performance_segments
-            if isinstance(item, dict) and str(item.get("text") or "").strip()
-        ]
-    else:
-        segments_payload = [
-            {
+                "index": index,
                 "text": segment,
                 "voice_id": voice_name,
-                "emotion": "calm",
-                "speed": speed,
-                "pause_after_ms": 220,
-                "intensity": "medium",
-                "scene_purpose": "explanation",
+                "emotion": directives["emotion"],
+                "speed": round(float(directives["speed"]), 3),
+                "pause_after_ms": int(directives["pause_after_ms"]),
+                "intensity": directives["intensity"],
+                "scene_purpose": scene_purpose,
             }
-            for segment in segment_text(tts_text)
-        ]
+        )
 
-    tts_input_path = (project_root / args.tts_input_output).resolve()
-    segments_path = (project_root / args.segments_output).resolve()
-    profile_path = (project_root / args.profile_output).resolve()
-    output_audio_path = (project_root / args.output_audio).resolve()
-
-    write_text(tts_input_path, tts_text + "\n")
-    write_json(segments_path, segments_payload)
-
-    default_emotion = "calm"
-    if performance_plan.get("voice_strategy_defaults") and isinstance(performance_plan["voice_strategy_defaults"], dict):
-        default_emotion = str(performance_plan["voice_strategy_defaults"].get("default_emotion") or default_emotion)
-
-    profile_payload = {
-        "platform": primary.get("platforms", ["bilibili"])[0] if isinstance(primary.get("platforms"), list) and primary.get("platforms") else "bilibili",
+    payload = {
         "content_id": primary.get("content_id") or project_root.name,
-        "voiceover_required": True,
-        "generation_status": "handoff_ready",
-        "voice_strategy": {
+        "platform": primary.get("platforms", ["bilibili"])[0] if isinstance(primary.get("platforms"), list) and primary.get("platforms") else "bilibili",
+        "source_script": relative_to_project(script_path, project_root),
+        "voice_strategy_defaults": {
             "primary_voice_id": voice_name,
-            "model": "speech-2.8-hd",
-            "language": "zh-CN",
-            "speed": speed,
-            "volume": 1.0,
-            "pitch": 0,
-            "emotion": default_emotion,
-            "default_emotion": default_emotion,
-            "segment_count": len(segments_payload),
+            "base_speed": round(base_speed, 3),
+            "default_emotion": "calm",
         },
-        "render_targets": {
-            "voiceover_audio": relative_to_project(output_audio_path, project_root),
-            "subtitle_source": relative_to_project(script_path, project_root),
-            "tts_input": relative_to_project(tts_input_path, project_root),
-            "segments_file": relative_to_project(segments_path, project_root),
-            "subtitle_draft": primary.get("subtitle_package", {}).get("estimated_srt", "content/postproduction/subtitles.srt"),
-            "voice_performance_plan": relative_to_project(performance_plan_path, project_root) if performance_plan_path else None,
-        },
-        "notes": [
-            "本文件由 build_tts_handoff.py 自动生成。",
-            "生成音频前请先确认 MINIMAX_API_KEY 和 MINIMAX_API_HOST 已配置。",
-        ],
+        "segments": segment_payload,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
-    write_json(profile_path, profile_payload)
 
-    print(
-        json.dumps(
-            {
-                "tts_input": str(tts_input_path),
-                "segments_file": str(segments_path),
-                "profile_path": str(profile_path),
-                "segment_count": len(segments_payload),
-            },
-            ensure_ascii=False,
-        )
-    )
+    output_path = (project_root / args.output).resolve()
+    write_json(output_path, payload)
+    print(json.dumps({"output_path": str(output_path), "segment_count": len(segment_payload)}, ensure_ascii=False))
     return 0
 
 

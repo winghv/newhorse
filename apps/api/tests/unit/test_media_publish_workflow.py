@@ -13,6 +13,8 @@ def run_command(command: list[str], workdir: Path) -> subprocess.CompletedProces
 
 def make_publishable_media_package(tmp_path: Path) -> Path:
     project_root = tmp_path
+    (project_root / "benchmarks").mkdir(parents=True, exist_ok=True)
+    (project_root / "angles").mkdir(parents=True, exist_ok=True)
     (project_root / "content" / "final-cut").mkdir(parents=True, exist_ok=True)
     (project_root / "content" / "postproduction").mkdir(parents=True, exist_ok=True)
     (project_root / "publish").mkdir(parents=True, exist_ok=True)
@@ -20,6 +22,20 @@ def make_publishable_media_package(tmp_path: Path) -> Path:
     (project_root / "planning").mkdir(parents=True, exist_ok=True)
     (project_root / "sources").mkdir(parents=True, exist_ok=True)
     (project_root / "assets" / "final-cover").mkdir(parents=True, exist_ok=True)
+    (project_root / "assets").mkdir(parents=True, exist_ok=True)
+
+    (project_root / "benchmarks" / "bilibili-hook-patterns.json").write_text(
+        json.dumps({"opening_patterns": [], "follow_conversion_patterns": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "angles" / "attention-structure-template.json").write_text(
+        json.dumps({"lead_hook": "自动化发布标题"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "angles" / "follow-conversion-hooks.json").write_text(
+        json.dumps({"follow_cta_variants": ["下一条继续拆"]}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     (project_root / "content" / "bilibili-midform-video.json").write_text(
         json.dumps(
@@ -79,13 +95,81 @@ def make_publishable_media_package(tmp_path: Path) -> Path:
         "1\n00:00:00,000 --> 00:00:01,000\nhello\n",
         encoding="utf-8",
     )
+    (project_root / "content" / "postproduction" / "voice-performance-plan.json").write_text(
+        json.dumps({"segments": [{"emotion": "focused"}]}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "voiceover-segments.json").write_text(
+        json.dumps([{"text": "hello", "emotion": "focused"}], ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "voiceover-profile.json").write_text(
+        json.dumps({"render_targets": {"voice_performance_plan": "content/postproduction/voice-performance-plan.json"}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "subtitle-style-pack.json").write_text(
+        json.dumps({"theme": "bilibili-midform-clean"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "audio-cue-sheet.json").write_text(
+        json.dumps({"bgm_tracks": [], "sfx_cues": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps({"scenes": [{"scene_id": "scene-01"}]}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "transition-plan.json").write_text(
+        json.dumps({"transitions": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps({"scene_fx": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "assets" / "final-cover" / "cover-v1.png").write_bytes(b"cover")
+    (project_root / "assets" / "scene-asset-plan.json").write_text(
+        json.dumps({"chapters": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "visual-evidence-map.json").write_text(
+        json.dumps({"chapters": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "generation-budget.json").write_text(
+        json.dumps({"quota": {"daily_limit": 2}, "approved_generation_slots": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "visual-diversity-report.json").write_text(
+        json.dumps({"status": "pass"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "minimax-shot-plan.json").write_text(
+        json.dumps({"approved_slots": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "generation-ledger.json").write_text(
+        json.dumps({"entries": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "review" / "review-gate.json").write_text(
         json.dumps({"approval_status": "approved", "safe_to_publish": True}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (project_root / "review" / "opening-scorecard.json").write_text(
+        json.dumps({"decision": "pass"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "review" / "assembly-qa-report.json").write_text(
         json.dumps({"status": "pass", "checks": {}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "review" / "subtitle-quality-report.json").write_text(
+        json.dumps({"status": "pass"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "review" / "scene-assembly-report.json").write_text(
+        json.dumps({"status": "pass"}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     (project_root / "planning" / "cognitive-punch-gate.json").write_text(
@@ -264,6 +348,10 @@ def make_publishable_xiaohongshu_video_package(tmp_path: Path) -> Path:
         json.dumps({"approval_status": "pass", "safe_to_publish": True}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (project_root / "review" / "assembly-qa-report.json").write_text(
+        json.dumps({"status": "pass", "checks": {}}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     (project_root / "publish" / "publish-manifest-v2.json").write_text(
         json.dumps(
             {
@@ -329,10 +417,15 @@ def test_build_publish_manifest_prefers_render_manifest_output(tmp_path: Path) -
     assert manifest["metadata"]["tags"] == ["AI工作流", "B站运营"]
     assert manifest["render_context"]["render_manifest"] == "content/postproduction/render-manifest.json"
     assert manifest["render_context"]["final_cut"] == "content/final-cut/pilot-v3-auto-narrated.mp4"
+    assert manifest["workflow_quality_gate"]["overall_status"] == "pass"
+    assert manifest["prelive_quality_summary_path"] == "publish/prelive-quality-summary.json"
     assert release_record["status"] == "manifest_prepared"
     assert release_record["current_assets"]["upload_path"] == "content/final-cut/pilot-v3-auto-narrated.mp4"
     assert release_record["publish"]["cover_set"] is False
     assert release_record["publish"]["cover_delivery_status"] == "pending_cli_upload"
+    prelive_summary = json.loads((project_root / "publish" / "prelive-quality-summary.json").read_text(encoding="utf-8"))
+    assert prelive_summary["decision"] == "ready_for_live_publish"
+    assert prelive_summary["workflow_quality_status"] == "pass"
 
 
 def test_build_publish_manifest_prefers_final_cover_asset_over_stale_draft_thumbnail(tmp_path: Path) -> None:
@@ -458,6 +551,44 @@ def test_build_publish_manifest_blocks_rebuild_timeline_when_auto_base_quality_n
     assert "auto_base_quality_not_passed" in manifest["blocking_reasons"]
     assert manifest["render_context"]["assembly_strategy"] == "rebuild_timeline"
     assert manifest["render_context"]["auto_base_quality_status"] == "revise"
+
+
+def test_build_publish_manifest_blocks_when_workflow_quality_gate_not_passed(tmp_path: Path) -> None:
+    """Workflow-level quality gate should block live readiness even when local publish fields look complete."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "multi-platform-publishing"
+        / "scripts"
+        / "build_publish_manifest.py"
+    )
+
+    project_root = make_publishable_media_package(tmp_path / "media-package")
+    (project_root / "assets" / "visual-diversity-report.json").write_text(
+        json.dumps({"status": "revise"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--account-name",
+            "creator",
+        ],
+        repo_root,
+    )
+
+    manifest = json.loads((project_root / "publish" / "publish-manifest-auto.json").read_text(encoding="utf-8"))
+    prelive_summary = json.loads((project_root / "publish" / "prelive-quality-summary.json").read_text(encoding="utf-8"))
+    assert manifest["decision"] == "dry_run_only"
+    assert "workflow_quality_gate_not_passed" in manifest["blocking_reasons"]
+    assert manifest["workflow_quality_gate"]["overall_status"] == "revise"
+    assert prelive_summary["workflow_quality_status"] == "revise"
 
 
 def test_build_publish_manifest_supports_content_id_resolution(tmp_path: Path) -> None:

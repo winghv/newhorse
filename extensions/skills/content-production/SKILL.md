@@ -30,6 +30,13 @@ version: 1.1.0
    - 社区帖子
 3. 如果是中长视频，先走 `licensed-footage-sourcing`，输出网上合法片段的查询方向、来源清单和许可状态。
 4. 如果是视频，再走 `video-asset-planning`，输出素材来源和生成预算决策。
+4.1. 对视频内容，默认还要补：
+   - `assets/scene-asset-plan.json`
+   - `assets/visual-evidence-map.json`
+   - `assets/generation-budget.json`
+   - `assets/minimax-shot-plan.json`
+   - `assets/generation-ledger.json`
+   - `assets/visual-diversity-report.json`
 5. 再选择基础产出 skill：
    - 短视频：`short-video-production`
    - 中长视频：`midlong-video-production`
@@ -75,8 +82,13 @@ version: 1.1.0
 - `narration_script`
 - `subtitle_source`
 - `asset_source_map`
+- `scene_asset_plan`
+- `visual_evidence_map`
 - `source_manifest`
 - `generation_budget_decision`
+- `generation_budget`
+- `minimax_shot_plan`
+- `generation_ledger`
 - `quota_snapshot`
 - `voiceover_assets`
 - `assembly_strategy`
@@ -116,11 +128,13 @@ version: 1.1.0
 - 解释型视频默认要交付可执行的旁白和字幕，不允许只留“后面再补”
 - 中长视频默认优先使用合法来源的网上片段做 B-roll 和气氛镜头，再考虑 AI 视频
 - 中长视频的证据层默认优先使用结构化 prompt proof、图卡和来源可审计的素材，不把人工录屏当默认依赖
+- 中长视频每章都要先明确 proof asset / supporting b-roll / fallback graphics，而不是把镜头判断拖到剪辑阶段
 - MiniMax 视频生成按稀缺资源处理。已知额度为每天 `6` 次、每次 `6` 秒时，默认只把它留给 `1-2` 个关键镜头
 - 如果已进入 final cut 阶段，必须把装配策略、渲染计划和验证记录结构化保存，而不是只交一个最终文件
 - 如果平台包装已经完成，必须同时补齐 `publish_metadata`，不要把账号、分区、标签和封面映射留到发布阶段临时猜
 - 任何事实性陈述都要能追溯到 brief 或研究资料
 - 高成本视频生成不是默认动作。脚本不过线、镜头替代方案存在、或生成收益不明确时，先不用
+- 如果 `visual-diversity-report.json` 未过线，先补素材，不要继续堆特效或转场掩盖素材重复
 - 需要额外素材时直接列出来，不要藏在文字里
 - 不只交一份“标准答案”，而要交付最有胜率的主版本和备选钩子
 

@@ -68,6 +68,7 @@
 - `pattern map`
 - `whitespace`
 - `anti-patterns`
+- 如果目标平台是 Bilibili 中视频，还要输出 `benchmarks/bilibili-hook-patterns.json`
 
 ### 3. Topic Selection
 
@@ -96,6 +97,9 @@
 - `hook hypotheses`
 - `proof plan`
 - `kill reasons`
+- 如果目标平台是 Bilibili 中视频，还要输出：
+  - `angles/attention-structure-template.json`
+  - `angles/follow-conversion-hooks.json`
 - 对解释型中长视频，还要输出 `cognitive punch gate`
 
 ### 5. Production
@@ -114,16 +118,32 @@
 - `asset source map`
 - `source manifest`
 - `source shortlist`
+- `exploration shortlist`
 - `asset ingest manifest`
+- `exploration ingest manifest`
 - `chapter coverage report`
+- `scene-asset-plan.json`
+- `visual-evidence-map.json`
+- `generation-budget.json`
+- `minimax-shot-plan.json`
+- `generation-ledger.json`
+- `visual-diversity-report.json`
 - `generation budget decision`
 - `quota snapshot`
 - `voiceover plan`
 - `subtitle package`
+- `voice-performance-plan.json`
+- `subtitle-style-pack.json`
+- `audio-cue-sheet.json`
+- `scene-manifest.json`
+- `transition-plan.json`
+- `emphasis-fx-plan.json`
 - `assembly strategy`
 - `render plan`
 - `render manifest`
 - `assembly qa report`
+- `subtitle-quality-report.json`
+- `scene-assembly-report.json`
 - `automation execution plan`
 - `open questions`
 
@@ -172,13 +192,19 @@
 自动化优先规则：
 
 - `B-roll` 默认先走 `licensed-footage-sourcing` runner，不靠人工逐段找素材
+- `licensed-footage-sourcing` 对中视频默认同时产出 production shortlist 和 exploration shortlist；后者用于放大 B-roll 候选池，不直接替代 production manifest
 - 图卡、封面和其他 SVG 资产默认先走确定性导出，不靠人工截图导图
+- 每章都要先结构化声明 `proof_asset`、`supporting_b_roll`、`fallback_graphics` 和 `max_repeat_uses`
 - Bilibili 封面如果走 AI 生成，默认是 `MiniMax 无字底图 + 本地确定性文字叠加`，不要把中文大字直接交给模型生成
 - “AI 给出相反答案”这类证据，默认先产出结构化 `prompt proof pack` + 图卡，不把人工录屏当成默认必需品
 - 缺字幕时，默认从 `voiceover-segments.json` + 已生成音频自动产出 `subtitle_draft`，不把人工逐句打轴当成默认步骤
+- 对讲解型视频，默认自动补 `voice-performance-plan.json` 和 `subtitle-style-pack.json`，不再接受整条统一语速、空 emotion 的 handoff
+- 对旁白驱动中视频，默认自动补 `scene-manifest.json`、`transition-plan.json` 和 `emphasis-fx-plan.json`，不再把“转场怎么做”留到最后凭感觉决定
 - `rebuild_timeline` 缺 rough cut 时，默认自动生成 `auto-base-cut.mp4`，不再把“先手工剪一个母版”当成前置条件
 - `rebuild_timeline` 自动生成的基础时间线必须同时输出质量摘要，例如 `image_slot_ratio`、`max_image_slot_duration_seconds`、`image_motion_enabled_count`，避免自动化可跑通但观感滑落
+- `visual-diversity-report.json` 必须额外检查重复素材是否超过章节级 `max_repeat_uses`
 - 旁白驱动的视频在装配 QA 中必须额外检查 subtitle alignment drift，不能只验证“字幕存在”
+- `scene-assembly-report.json` 必须额外检查 scene / transition / emphasis 计划是否齐全，以及是否和装配结果保持一致
 - `supervisor-led` 可以增加人工检查，但 `autonomous-team` 不应因为缺少人工录屏或人工 checkpoint 而停住
 
 ### 6. Competitive Review
@@ -195,10 +221,12 @@
 - `review decision`
 - `issues`
 - `stronger alternatives`
+- 如果目标平台是 Bilibili 中视频，还要输出 `review/opening-scorecard.json`
 
 如果产物是视频，竞争审校至少额外检查：
 
 - 前 `1-3` 秒是否先给结果、冲突或异常点
+- 前 `30` 秒是否完成 promise -> proof 的闭环
 - 证据或画面证明是否在前 `5-10` 秒内出现
 - 镜头与信息节奏是否足以支撑完播
 - 封面/标题/开场是否协同
@@ -206,6 +234,7 @@
 - 是否为了“看起来高级”而浪费生成预算
 - 旁白是否清晰推进理解，而不是只做背景音
 - 字幕是否和口播一致，是否影响阅读和看图
+- 结尾是否给出了继续看下一条的理由，而不是只做口号式收尾
 
 如果产物是小红书图文，竞争审校至少额外检查：
 
@@ -260,10 +289,12 @@
 - `per-platform status`
 - `retry guidance`
 - `release record`
+- `publish/prelive-quality-summary.json`
 
 发布门禁补充：
 
 - 视频内容进入发布前，必须同时具备 `competitive-scorecard.json`、`review-gate.json`、`publish_metadata` 和 `publish/release-record.json`
+- 视频内容进入发布前，必须再通过 `review/workflow-quality-gate.json`
 - `rebuild_timeline` 视频如果缺少 `content/postproduction/auto-base-cut-plan.json`，或其中 `quality.status != pass`，则 `publish manifest` 只能是 blocked，不得进入 live prep
 - Bilibili 中长视频的 `publish_metadata` 至少要包含 `account_name`、`partition`、`partition_name`、`tags` 和封面/上传素材路径；缺任一项都不算 ready
 - AI 判断力 / 职场成长类 Bilibili 中长视频，默认分区应为 `知识 -> 职业职场 (209)`，不是 `计算机技术`
@@ -301,6 +332,7 @@
 - 发布日志必须脱敏
 - 平台未接入自动化时，只输出手工发布包
 - 竞争审校未通过时，不进入合规门禁和真实发布
+- workflow quality gate 任何一项仍是 `revise / block` 时，不进入真实发布
 
 ## Handoff Contract
 
@@ -398,6 +430,7 @@
 - 中长视频每章都要声明 `required_coverage_seconds`、候选素材数和 fallback；没有章节覆盖报告，不进入 live 准备。
 - 如果已经进入 final cut 装配阶段，必须保留 `render_plan` 和 `render_manifest`；只有文件没有记录，不算流程完成。
 - 装配后的 QA 至少要检查 freeze/static、duration 对齐、结尾语义和字幕交付方式；`assembly-qa-report.json` 未通过时，不进入发布门禁。
+- `subtitle-quality-report.json` 未通过时，也不进入发布门禁。
 - 竞争审校解决“作品强不强”，合规门禁解决“能不能发”；两者不要混为一谈。
 - 竞争审校必须给结构化分数，不能只给“感觉不错”之类的判断。
 - 发布前必须有竞争审校结论、审核状态和账号/素材映射。

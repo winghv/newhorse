@@ -74,6 +74,10 @@ python3 ../../../extensions/skills/multi-platform-publishing/scripts/build_publi
    - 发布时间
    - 审核状态
 4. 生成或刷新 `publish/release-record.json`，把最终视频路径、上传版路径、封面路径、voice、runtime、最新 manifest/result 和平台返回标识统一写回单一真源。
+4.1. 发布前同时生成或刷新：
+   - `review/workflow-quality-gate.json`
+   - `review/upgrade-status-board.json`
+   - `publish/prelive-quality-summary.json`
 5. 对视频内容，素材路径优先取自 `render-manifest` 的最新 final cut，不手工猜版本号。
 6. 按平台改写元数据，禁止原样群发。
 7. 如果 `assembly_strategy = rebuild_timeline`，先确认 `content/postproduction/auto-base-cut-plan.json` 存在且 `quality.status = pass`；否则只允许输出 blocked manifest，不进入 live prep。
@@ -91,6 +95,8 @@ python3 ../../../extensions/skills/multi-platform-publishing/scripts/build_publi
 - 发布结果必须回填为结构化摘要，方便复盘
 - 真实发布必须显式追加 `--live`
 - `publish-manifest-auto.json` 的 `decision` 不是 `ready_for_live_publish` 时，workflow 必须拒绝 live publish
+- `review/workflow-quality-gate.json` 的 `overall_status` 不是 `pass` 时，workflow 必须阻塞 live publish
+- `publish/prelive-quality-summary.json` 必须明确透出 workflow gate 的各维状态，避免只看局部门禁就误放行
 - `rebuild_timeline` 视频的 `auto_base_quality_status` 不是 `pass` 时，`publish-manifest-prelive.json` 和 `live-execution-plan.json` 都不能进入 `ready_for_live_publish`
 - 发布队列里必须透出 `assembly_strategy` 和 `auto_base_quality_status`，方便批量判断哪些包需要先修自动时间线
 - 发布结果日志必须脱敏，不能回写 cookie、token、密钥

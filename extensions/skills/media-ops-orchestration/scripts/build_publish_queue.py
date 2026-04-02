@@ -113,6 +113,8 @@ def recommend_next_action(queue_status: str, blocking_reasons: list[str], missin
         return "fill_required_artifacts"
     if "review_gate_not_safe" in blocking_reasons:
         return "revise_content_and_review_gate"
+    if "workflow_quality_gate_not_passed" in blocking_reasons:
+        return "fix_workflow_quality_gate"
     if "approval_not_granted" in blocking_reasons:
         return "obtain_supervisor_approval"
     if "auto_base_quality_not_passed" in blocking_reasons or "auto_base_quality_report_missing" in blocking_reasons:
@@ -155,6 +157,10 @@ def build_entry(project_root: Path, media_ops_root: Path) -> dict[str, Any]:
         "auto_base_quality_status": first_non_empty_string(
             prelive_manifest.get("render_context", {}).get("auto_base_quality_status"),
             live_plan.get("render_context", {}).get("auto_base_quality_status"),
+        ),
+        "workflow_quality_status": first_non_empty_string(
+            prelive_manifest.get("workflow_quality_gate", {}).get("overall_status"),
+            live_plan.get("workflow_quality_gate", {}).get("overall_status"),
         ),
         "approval_status": package.get("review", {}).get("approval_status"),
         "safe_to_publish": package.get("review", {}).get("safe_to_publish"),

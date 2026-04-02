@@ -33,10 +33,13 @@ system_prompt: |
     `python3 ../../../extensions/skills/multi-platform-publishing/scripts/run_publish_workflow.py --media-ops-root ../../media-ops --content-id <content-id> --account-name <account>`
   - 执行后优先使用：
     - `publish/publish-manifest-auto.json`
+    - `publish/prelive-quality-summary.json`
     - `publish/publish-result-auto.json`
+    - `review/workflow-quality-gate.json`
     - `content/postproduction/render-manifest.json`
     - `content/final-cut/*.mp4`
   - 如果要真实发布，必须显式追加 `--live`，并且 `publish-manifest-auto.json` 里的 `decision` 必须已经是 `ready_for_live_publish`
+  - 如果 `review/workflow-quality-gate.json` 不是 `pass`，或 `publish/prelive-quality-summary.json` 仍显示 workflow gate 有 `revise / block` 维度，不进入 live publish
   - 如果自动生成的发布清单仍缺标签、分区、账号或审批状态，再停在 dry-run 或待补信息，而不是跳过门禁。
 
   ## 发布规则

@@ -215,6 +215,66 @@ def build_slots(cues: list[dict[str, Any]], total_duration: float) -> list[dict[
     return slots
 
 
+def parse_marker_timecode(value: str | None) -> float | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parts = value.strip().split(":")
+    try:
+        if len(parts) == 2:
+            minutes, seconds = parts
+            return int(minutes) * 60 + float(seconds)
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except ValueError:
+        return None
+    return None
+
+
+def normalize_text_for_match(value: str | None) -> str:
+    raw = str(value or "")
+    return "".join(re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", raw)).lower()
+
+
+def text_match_score(left: str | None, right: str | None) -> float:
+    left_normalized = normalize_text_for_match(left)
+    right_normalized = normalize_text_for_match(right)
+    if not left_normalized or not right_normalized:
+        return 0.0
+    if left_normalized in right_normalized or right_normalized in left_normalized:
+        return 1.0
+
+    def bigrams(value: str) -> set[str]:
+        if len(value) < 2:
+            return {value}
+        return {value[index : index + 2] for index in range(len(value) - 1)}
+
+    left_tokens = bigrams(left_normalized)
+    right_tokens = bigrams(right_normalized)
+    overlap = left_tokens & right_tokens
+    if not overlap:
+        return 0.0
+    return len(overlap) / max(len(left_tokens), len(right_tokens))
+
+
+def effect_text_match_score(effect_text: str | None, subtitle_text: str | None) -> float:
+    candidates = [str(effect_text or "")]
+    candidates.extend(part.strip() for part in re.split(r"[\\/|]", str(effect_text or "")) if part.strip())
+    return max(text_match_score(candidate, subtitle_text) for candidate in candidates if candidate)
+
+
+def phrase_alignment_offset(effect_text: str | None, subtitle_text: str | None, subtitle_duration: float) -> float:
+    effect_normalized = normalize_text_for_match(effect_text)
+    subtitle_normalized = normalize_text_for_match(subtitle_text)
+    if not effect_normalized or not subtitle_normalized or effect_normalized not in subtitle_normalized:
+        return 0.0
+    prefix = subtitle_normalized.split(effect_normalized, 1)[0]
+    if not prefix:
+        return 0.0
+    ratio = len(prefix) / max(len(subtitle_normalized), 1)
+    return round(ratio * max(float(subtitle_duration), 0.0), 3)
+
+
 def infer_chapter_from_text(value: str | None) -> str | None:
     if not value:
         return None
@@ -289,6 +349,7 @@ def collect_cover_asset(project_root: Path) -> dict[str, Any] | None:
 
 def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
     proof_pack = load_json(project_root / "sources" / "prompt-proof-pack.json")
+    scene_asset_plan = load_json(project_root / "assets" / "scene-asset-plan.json")
     prioritized: list[dict[str, Any]] = []
     raw_paths: list[tuple[str, str | None]] = []
     for raw_path in proof_pack.get("primary_render_assets", []):
@@ -297,6 +358,15 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
     for item in proof_pack.get("proof_items", []):
         if isinstance(item, dict) and isinstance(item.get("graphic_binding"), str):
             raw_paths.append((item["graphic_binding"], item.get("chapter_id")))
+    chapters = scene_asset_plan.get("chapters") if isinstance(scene_asset_plan.get("chapters"), list) else []
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+        chapter_id = str(chapter.get("chapter_id") or "").strip()
+        proof_asset = chapter.get("proof_asset") if isinstance(chapter.get("proof_asset"), dict) else {}
+        proof_asset_path = proof_asset.get("path")
+        if isinstance(proof_asset_path, str) and proof_asset_path.strip():
+            raw_paths.append((proof_asset_path, chapter_id))
 
     seen: set[Path] = set()
     for raw_path, chapter_id in raw_paths:
@@ -312,8 +382,8 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
                 "path": candidate,
                 "chapter_id": chapter_id,
                 "order": parse_card_order(candidate),
-                "role": "proof",
-                "source": "prompt-proof-pack",
+                "role": "keyart" if "generated" in candidate.as_posix() or "ai-keyframes" in candidate.as_posix() else "proof",
+                "source": "scene-asset-plan" if "assets/" in str(raw_path) else "prompt-proof-pack",
             }
         )
     return prioritized
@@ -321,26 +391,163 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
 
 def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
     source_manifest = load_json(project_root / "sources" / "source-manifest.json")
+    source_shortlist = load_json(project_root / "sources" / "source-shortlist.json")
+    exploration_shortlist = load_json(project_root / "sources" / "exploration-shortlist.json")
+    scene_asset_plan = load_json(project_root / "assets" / "scene-asset-plan.json")
+    exploration_ingest = load_json(project_root / "sources" / "exploration-ingest-manifest.json")
     manifest_items = source_manifest.get("source_manifest") if isinstance(source_manifest.get("source_manifest"), list) else []
     assets: list[dict[str, Any]] = []
-    for item in manifest_items:
-        if not isinstance(item, dict) or item.get("license_status") != "approved":
-            continue
-        candidate = resolve_candidate(project_root, item.get("local_asset_path"))
+    seen_paths: set[Path] = set()
+    metadata_by_clip_id: dict[str, dict[str, Any]] = {}
+
+    shortlist_items: list[dict[str, Any]] = []
+    for payload in (source_shortlist, exploration_shortlist, source_manifest):
+        shortlist_items.extend([item for item in payload.get("results", []) if isinstance(item, dict)])
+        shortlist_items.extend([item for item in payload.get("source_shortlist", []) if isinstance(item, dict)])
+    for item in shortlist_items:
+        provider = str(item.get("provider") or "")
+        provider_asset_id = str(item.get("provider_asset_id") or "")
+        title = str(item.get("title") or "")
+        page_url = str(item.get("page_url") or "")
+        tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+        keys = {
+            f"{provider}-{provider_asset_id}",
+            provider_asset_id,
+        }
+        for key in keys:
+            if key:
+                metadata_by_clip_id[key] = {
+                    "title": title,
+                    "page_url": page_url,
+                    "tags": [str(tag) for tag in tags],
+                }
+
+    def append_asset(payload: dict[str, Any]) -> None:
+        candidate = resolve_candidate(project_root, payload.get("path"))
         if candidate is None or not candidate.exists() or candidate.suffix.lower() not in VIDEO_SUFFIXES:
-            continue
-        duration_seconds = item.get("duration_seconds")
+            return
+        if candidate in seen_paths:
+            return
+        seen_paths.add(candidate)
+        clip_id = payload.get("clip_id")
+        metadata = metadata_by_clip_id.get(str(clip_id or ""), {})
+        if low_value_video_penalty(
+            title=str(metadata.get("title") or ""),
+            page_url=str(metadata.get("page_url") or ""),
+            tags=metadata.get("tags") if isinstance(metadata.get("tags"), list) else [],
+        ) <= -70:
+            return
+        duration_seconds = payload.get("duration_seconds")
         assets.append(
             {
                 "type": "video",
                 "path": candidate,
+                "chapter_id": payload.get("chapter_id"),
+                "clip_id": clip_id,
+                "duration_seconds": float(duration_seconds) if isinstance(duration_seconds, (int, float)) else media_duration(candidate),
+                "source": payload.get("source"),
+                "title": str(metadata.get("title") or ""),
+                "page_url": str(metadata.get("page_url") or ""),
+                "tags": [str(tag) for tag in metadata.get("tags", [])],
+            }
+        )
+
+    for item in manifest_items:
+        if not isinstance(item, dict) or item.get("license_status") != "approved":
+            continue
+        append_asset(
+            {
+                "path": item.get("local_asset_path"),
                 "chapter_id": item.get("chapter_id"),
                 "clip_id": item.get("clip_id"),
-                "duration_seconds": float(duration_seconds) if isinstance(duration_seconds, (int, float)) else media_duration(candidate),
+                "duration_seconds": item.get("duration_seconds"),
                 "source": "source-manifest",
             }
         )
+    chapters = scene_asset_plan.get("chapters") if isinstance(scene_asset_plan.get("chapters"), list) else []
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+        chapter_id = chapter.get("chapter_id")
+        supporting_b_roll = chapter.get("supporting_b_roll") if isinstance(chapter.get("supporting_b_roll"), list) else []
+        for item in supporting_b_roll:
+            if not isinstance(item, dict):
+                continue
+            append_asset(
+                {
+                    "path": item.get("asset_path"),
+                    "chapter_id": chapter_id,
+                    "clip_id": item.get("clip_id"),
+                    "duration_seconds": item.get("duration_seconds"),
+                    "source": "scene-asset-plan",
+                }
+            )
+    ingested_assets = exploration_ingest.get("ingested_assets") if isinstance(exploration_ingest.get("ingested_assets"), list) else []
+    for item in ingested_assets:
+        if not isinstance(item, dict):
+            continue
+        append_asset(
+            {
+                "path": item.get("local_path"),
+                "chapter_id": item.get("chapter_id"),
+                "clip_id": item.get("clip_id"),
+                "duration_seconds": item.get("duration_seconds"),
+                "source": "exploration-ingest-manifest",
+            }
+        )
     return sorted(assets, key=lambda item: (item.get("chapter_id") or "zz", item.get("clip_id") or item["path"].name))
+
+
+def low_value_video_penalty(*, title: str | None, page_url: str | None, tags: list[str] | None) -> float:
+    haystack = " ".join(
+        [
+            str(title or "").lower(),
+            str(page_url or "").lower(),
+            " ".join(str(tag).lower() for tag in (tags or [])),
+        ]
+    )
+    penalty = 0.0
+    if any(token in haystack for token in ("white background", "white screen", "white-background", "white-screen")):
+        penalty -= 90.0
+    if any(token in haystack for token in ("green screen", "green-screen")):
+        penalty -= 75.0
+    if "icon set" in haystack or "vector" in haystack:
+        penalty -= 45.0
+    return penalty
+
+
+def load_chapter_effects(project_root: Path) -> dict[str, list[dict[str, Any]]]:
+    scene_manifest = load_json(project_root / "content" / "postproduction" / "scene-manifest.json")
+    emphasis_fx_plan = load_json(project_root / "content" / "postproduction" / "emphasis-fx-plan.json")
+    scenes = scene_manifest.get("scenes") if isinstance(scene_manifest.get("scenes"), list) else []
+    scene_map = {
+        str(scene.get("scene_id") or ""): scene
+        for scene in scenes
+        if isinstance(scene, dict) and str(scene.get("scene_id") or "")
+    }
+    effects_by_chapter: dict[str, list[dict[str, Any]]] = {}
+    scene_fx = emphasis_fx_plan.get("scene_fx") if isinstance(emphasis_fx_plan.get("scene_fx"), list) else []
+    for item in scene_fx:
+        if not isinstance(item, dict):
+            continue
+        scene = scene_map.get(str(item.get("scene_id") or ""))
+        if not scene:
+            continue
+        chapter_id = str(scene.get("chapter_id") or "")
+        if not chapter_id:
+            continue
+        effects = [effect for effect in item.get("effects", []) if isinstance(effect, dict)]
+        effects_by_chapter[chapter_id] = effects
+    if effects_by_chapter:
+        return effects_by_chapter
+    for scene in scenes:
+        chapter_id = str(scene.get("chapter_id") or "")
+        if not chapter_id:
+            continue
+        effects = [effect for effect in scene.get("emphasis_fx", []) if isinstance(effect, dict)]
+        if effects:
+            effects_by_chapter[chapter_id] = effects
+    return effects_by_chapter
 
 
 def resolve_chapter_order(project_root: Path, assets: list[dict[str, Any]]) -> list[str]:
@@ -366,14 +573,84 @@ def resolve_chapter_order(project_root: Path, assets: list[dict[str, Any]]) -> l
     return ordered
 
 
+def chapter_targets_from_markers(
+    project_root: Path,
+    *,
+    slots: list[dict[str, float]],
+    chapter_order: list[str],
+    has_cover: bool,
+) -> list[str | None] | None:
+    content_packet_path = detect_content_packet(project_root)
+    content_packet = primary_packet(load_json(content_packet_path))
+    chapter_markers = content_packet.get("chapter_markers")
+    if not isinstance(chapter_markers, list) or not chapter_markers:
+        return None
+
+    parsed_markers: list[tuple[float, str]] = []
+    for item in chapter_markers:
+        if not isinstance(item, dict):
+            continue
+        start_seconds = parse_marker_timecode(item.get("timecode"))
+        if start_seconds is None:
+            continue
+        parsed_markers.append((start_seconds, str(item.get("title") or "")))
+    if not parsed_markers:
+        return None
+
+    parsed_markers.sort(key=lambda item: item[0])
+    marker_chapters: list[tuple[float, str | None]] = []
+    if has_cover and parsed_markers and parsed_markers[0][0] <= 0.01 and len(parsed_markers) >= len(chapter_order) + 1:
+        for index, chapter_id in enumerate(chapter_order, start=1):
+            if index >= len(parsed_markers):
+                break
+            marker_chapters.append((parsed_markers[index][0], chapter_id))
+    else:
+        for index, chapter_id in enumerate(chapter_order):
+            if index >= len(parsed_markers):
+                break
+            marker_chapters.append((parsed_markers[index][0], chapter_id))
+        if has_cover and marker_chapters and marker_chapters[0][0] > 0.01:
+            marker_chapters.insert(0, (0.0, "opening"))
+
+    if not marker_chapters:
+        return None
+
+    targets: list[str | None] = []
+    for slot_index, slot in enumerate(slots):
+        if has_cover and slot_index == 0:
+            targets.append("opening")
+            continue
+        slot_start = float(slot["start"])
+        chosen_target: str | None = marker_chapters[0][1]
+        for marker_start, marker_target in marker_chapters:
+            if slot_start + 0.01 >= marker_start:
+                chosen_target = marker_target
+            else:
+                break
+        targets.append(chosen_target)
+    return targets
+
+
 def build_chapter_targets(
     slots: list[dict[str, float]],
     chapter_order: list[str],
     assets: list[dict[str, Any]],
     has_cover: bool,
+    *,
+    project_root: Path | None = None,
 ) -> list[str | None]:
     if not slots:
         return []
+
+    if project_root is not None:
+        marker_targets = chapter_targets_from_markers(
+            project_root,
+            slots=slots,
+            chapter_order=chapter_order,
+            has_cover=has_cover,
+        )
+        if marker_targets is not None:
+            return marker_targets
 
     targets: list[str | None] = []
     if has_cover:
@@ -449,30 +726,58 @@ def interleave_assets(
         ordered.append(asset)
 
     append_asset(cover_asset)
-    for index in range(max(len(graphic_assets), len(video_assets))):
-        if index < len(graphic_assets):
-            append_asset(graphic_assets[index])
+    for index in range(max(len(proof_assets), len(video_assets), len(graphic_assets))):
+        if index < len(proof_assets):
+            append_asset(proof_assets[index])
         if index < len(video_assets):
             append_asset(video_assets[index])
-    for asset in proof_assets:
-        append_asset(asset)
+        if index < len(graphic_assets):
+            append_asset(graphic_assets[index])
     return ordered
 
 
-def motion_profile(slot_index: int, role: str | None, duration: float) -> dict[str, Any]:
+def motion_profile(
+    slot_index: int,
+    role: str | None,
+    duration: float,
+    *,
+    asset_type: str,
+    asset_path: Path,
+    effects: list[dict[str, Any]],
+) -> dict[str, Any]:
+    push_intensity = next(
+        (str(effect.get("intensity") or "medium") for effect in effects if effect.get("type") == "camera_push"),
+        "medium",
+    )
+    if asset_type == "image" and asset_path.name.startswith("card-"):
+        return {
+            "preset": "static_hold",
+            "zoom_ratio": 1.0,
+        }
+
+    if asset_type == "image" and role not in {"cover", "proof", "keyart", "running-example"}:
+        return {
+            "preset": "static_hold",
+            "zoom_ratio": 1.0,
+        }
+
     if role == "cover":
         preset = "push_right"
         zoom_ratio = 1.12
-    elif role == "proof":
+    elif role in {"proof", "keyart"}:
         preset = "push_left"
-        zoom_ratio = 1.12
+        zoom_ratio = 1.05 if asset_type == "image" else 1.1
     else:
         presets = ("push_right", "push_left", "tilt_down", "tilt_up", "diagonal_down", "diagonal_up")
         preset = presets[slot_index % len(presets)]
-        zoom_ratio = 1.08
+        zoom_ratio = 1.1 if asset_type == "video" else 1.04
 
     if duration >= 7.0:
+        zoom_ratio += 0.015
+    if push_intensity == "high":
         zoom_ratio += 0.02
+    elif push_intensity == "medium":
+        zoom_ratio += 0.01
 
     return {
         "preset": preset,
@@ -484,6 +789,8 @@ def assign_assets(
     slots: list[dict[str, float]],
     assets: list[dict[str, Any]],
     chapter_targets: list[str | None],
+    chapter_effects_by_chapter: dict[str, list[dict[str, Any]]],
+    chapter_order: list[str],
 ) -> list[dict[str, Any]]:
     if not assets:
         raise FileNotFoundError("No visual assets available for rebuild_timeline source generation.")
@@ -491,6 +798,23 @@ def assign_assets(
     sequence: list[dict[str, Any]] = []
     use_counts: dict[Path, int] = defaultdict(int)
     last_used_slot: dict[Path, int] = {}
+    chapter_video_paths: dict[str, set[Path]] = defaultdict(set)
+    typewriter_applied_chapters: set[str] = set()
+    chapter_target_order: list[str] = [target for target in chapter_targets if isinstance(target, str) and target.startswith("ch")]
+    opening_effect_chapter = chapter_order[0] if chapter_order else (chapter_target_order[0] if chapter_target_order else None)
+    if opening_effect_chapter is None:
+        opening_effect_chapter = next(
+            (
+                str(asset.get("chapter_id"))
+                for asset in assets
+                if isinstance(asset.get("chapter_id"), str) and str(asset.get("chapter_id")).startswith("ch")
+            ),
+            None,
+        )
+    for asset in assets:
+        chapter_id = asset.get("chapter_id")
+        if asset["type"] == "video" and isinstance(chapter_id, str) and chapter_id:
+            chapter_video_paths[chapter_id].add(asset["path"])
 
     def can_cover(asset: dict[str, Any], duration: float) -> bool:
         if asset["type"] == "image":
@@ -507,8 +831,11 @@ def assign_assets(
 
     def choose_asset(index: int, duration: float, target_chapter: str | None) -> dict[str, Any]:
         consecutive_images = consecutive_type_count("image")
+        consecutive_videos = consecutive_type_count("video")
         previous_type = sequence[-1]["asset_type"] if sequence else None
         previous_target = sequence[-1].get("target_chapter") if sequence else None
+        chapter_sequence = [item for item in sequence if item.get("target_chapter") == target_chapter]
+        chapter_image_count = sum(1 for item in chapter_sequence if item.get("asset_type") == "image")
 
         best_asset: dict[str, Any] | None = None
         best_score: tuple[float, float, float, float] | None = None
@@ -533,12 +860,26 @@ def assign_assets(
                 score += 4
             elif target_chapter and candidate_chapter not in {None, target_chapter}:
                 score -= 10
+                if candidate_type == "image":
+                    score -= 35
 
             if target_chapter == "ch3":
                 if candidate_role == "proof" and use_counts[candidate["path"]] == 0:
                     score += 45
                 elif candidate_role == "running-example":
                     score += 30
+
+            if candidate_role == "keyart":
+                if use_counts[candidate["path"]] == 0:
+                    score += 42
+                elif use_counts[candidate["path"]] == 1:
+                    score += 6
+                else:
+                    score -= 18 * use_counts[candidate["path"]]
+            elif candidate_role == "proof":
+                score += 14
+                if use_counts[candidate["path"]] == 0:
+                    score += 10
 
             if target_chapter == "ch4":
                 if candidate_role == "framework-overview":
@@ -548,21 +889,47 @@ def assign_assets(
                 elif candidate_role == "step-card":
                     score += 16
 
+            if target_chapter == "ch1" and chapter_image_count == 0 and len(chapter_sequence) >= 3:
+                if candidate_type == "image":
+                    score += 70
+                    if candidate_role in {"proof", "keyart"}:
+                        score += 15
+                elif consecutive_videos >= 3:
+                    score -= 40
+
             if candidate_type == "video":
                 score += 16
+                if use_counts[candidate["path"]] == 0:
+                    score += 10
+                if duration > MAX_IMAGE_SLOT_DURATION_SECONDS:
+                    score += 24
+                score += low_value_video_penalty(
+                    title=str(candidate.get("title") or ""),
+                    page_url=str(candidate.get("page_url") or ""),
+                    tags=candidate.get("tags") if isinstance(candidate.get("tags"), list) else [],
+                )
                 if consecutive_images >= 2:
                     score += 22
                 if previous_type == "video":
                     score -= 8
+                unique_video_count = len(chapter_video_paths.get(str(target_chapter or ""), set()))
+                if target_chapter and candidate_chapter == target_chapter and unique_video_count > 1 and use_counts[candidate["path"]] > 0:
+                    score -= 28
                 coverage_margin = float(candidate.get("duration_seconds", duration)) - duration
                 score += min(max(coverage_margin, 0.0), 6.0)
             else:
+                if duration > MAX_IMAGE_SLOT_DURATION_SECONDS:
+                    score -= 120
                 if consecutive_images >= 2:
                     score -= 18
                 elif consecutive_images == 1:
                     score -= 6
-                if candidate_role == "proof":
+                if candidate_role in {"proof", "keyart"}:
                     score += 12
+                elif use_counts[candidate["path"]] >= 1:
+                    score -= 12
+                if target_chapter and len(chapter_video_paths.get(str(target_chapter or ""), set())) > 0 and candidate_role not in {"cover", "proof", "keyart"}:
+                    score -= 16
 
             if previous_type == candidate_type:
                 score -= 10
@@ -572,7 +939,10 @@ def assign_assets(
             else:
                 score += min(previous_distance, 8)
 
-            score -= use_counts[candidate["path"]] * 4
+            if candidate_role == "keyart" and use_counts[candidate["path"]] >= 2:
+                score -= use_counts[candidate["path"]] * 10
+            else:
+                score -= use_counts[candidate["path"]] * (12 if candidate_type == "image" and candidate_role not in {"cover", "proof", "keyart"} else 4)
 
             tie_breaker = (
                 score,
@@ -598,6 +968,10 @@ def assign_assets(
         use_count = use_counts[asset["path"]]
         use_counts[asset["path"]] += 1
         last_used_slot[asset["path"]] = index
+        chapter_fx_key = str(target_chapter or asset.get("chapter_id") or "")
+        if chapter_fx_key == "opening" and opening_effect_chapter:
+            chapter_fx_key = opening_effect_chapter
+        chapter_effects = chapter_effects_by_chapter.get(chapter_fx_key, [])
 
         clip_start = 0.0
         if asset["type"] == "video":
@@ -605,6 +979,32 @@ def assign_assets(
             max_offset = max(duration_seconds - slot["duration"], 0.0)
             if max_offset > 0:
                 clip_start = round(min((use_count * 1.618) % max_offset, max_offset), 3)
+
+        motion = motion_profile(
+            index,
+            asset.get("role"),
+            slot["duration"],
+            asset_type=asset["type"],
+            asset_path=asset["path"],
+            effects=chapter_effects,
+        )
+        typewriter_effect = None
+        if chapter_fx_key and chapter_fx_key not in typewriter_applied_chapters:
+            typewriter_effect = next(
+                (
+                    effect
+                    for effect in chapter_effects
+                    if effect.get("type") == "typewriter_quote"
+                    and str(effect.get("text") or "").strip()
+                    and (
+                        not str(effect.get("target_role") or "").strip()
+                        or str(effect.get("target_role") or "").strip() == str(asset.get("role") or "")
+                    )
+                ),
+                None,
+            )
+            if typewriter_effect is not None:
+                typewriter_applied_chapters.add(chapter_fx_key)
 
         sequence.append(
             {
@@ -620,16 +1020,261 @@ def assign_assets(
                 "asset_source": asset.get("source"),
                 "role": asset.get("role"),
                 "clip_id": asset.get("clip_id"),
-                "motion_preset": None,
-                "motion_zoom_ratio": None,
+                "motion_preset": motion["preset"],
+                "motion_zoom_ratio": motion["zoom_ratio"],
+                "typewriter_text": typewriter_effect.get("text") if typewriter_effect else None,
+                "typewriter_anchor": typewriter_effect.get("anchor") if typewriter_effect else None,
+                "typewriter_chars_per_second": typewriter_effect.get("chars_per_second") if typewriter_effect else None,
+                "typewriter_start_offset_seconds": typewriter_effect.get("start_offset_seconds") if typewriter_effect else None,
+                "typewriter_duration_seconds": typewriter_effect.get("duration_seconds") if typewriter_effect else None,
             }
         )
-        if asset["type"] == "image":
-            motion = motion_profile(index, asset.get("role"), slot["duration"])
-            sequence[-1]["motion_preset"] = motion["preset"]
-            sequence[-1]["motion_zoom_ratio"] = motion["zoom_ratio"]
 
     return sequence
+
+
+def align_typewriter_effects_to_subtitles(
+    sequence: list[dict[str, Any]],
+    *,
+    chapter_effects_by_chapter: dict[str, list[dict[str, Any]]],
+    subtitle_cues: list[dict[str, Any]],
+    chapter_order: list[str],
+) -> list[dict[str, Any]]:
+    if not sequence:
+        return sequence
+
+    chapter_slots: dict[str, list[int]] = defaultdict(list)
+    for index, item in enumerate(sequence):
+        target_chapter = str(item.get("target_chapter") or "")
+        chapter_id = str(item.get("chapter_id") or "")
+        if target_chapter:
+            chapter_slots[target_chapter].append(index)
+        if chapter_id:
+            chapter_slots[chapter_id].append(index)
+        if target_chapter == "opening" and chapter_order:
+            chapter_slots[chapter_order[0]].append(index)
+
+    updated = [{**item} for item in sequence]
+    for item in updated:
+        item["typewriter_text"] = None
+        item["typewriter_anchor"] = None
+        item["typewriter_chars_per_second"] = None
+        item["typewriter_start_offset_seconds"] = None
+        item["typewriter_duration_seconds"] = None
+
+    for chapter_id, effects in chapter_effects_by_chapter.items():
+        typewriter_effects = [
+            effect
+            for effect in effects
+            if isinstance(effect, dict) and effect.get("type") == "typewriter_quote" and str(effect.get("text") or "").strip()
+        ]
+        if not typewriter_effects:
+            continue
+        slot_indexes = sorted(set(chapter_slots.get(chapter_id, [])))
+        if not slot_indexes:
+            continue
+        slot_window_start = min(float(updated[index]["slot_start"]) for index in slot_indexes)
+        slot_window_end = max(float(updated[index]["slot_end"]) for index in slot_indexes)
+        candidate_subtitles = list(subtitle_cues)
+
+        for effect in typewriter_effects:
+            target_role = str(effect.get("target_role") or "").strip()
+            preferred_slot_candidates = [
+                index
+                for index, item in enumerate(updated)
+                if not target_role or str(item.get("role") or "") == target_role
+            ]
+            if not preferred_slot_candidates:
+                preferred_slot_candidates = list(range(len(updated)))
+
+            matched_cue = None
+            matched_score = 0.0
+            for cue in candidate_subtitles:
+                score = effect_text_match_score(effect.get("text"), cue.get("text"))
+                if score > matched_score:
+                    matched_score = score
+                    matched_cue = cue
+
+            chosen_index = preferred_slot_candidates[0]
+            start_offset_seconds = float(effect.get("start_offset_seconds") or 0.0)
+            if matched_cue is not None and matched_score >= 0.3:
+                cue_start = float(matched_cue.get("start", 0.0))
+                cue_start += phrase_alignment_offset(
+                    effect.get("text"),
+                    matched_cue.get("text"),
+                    float(matched_cue.get("duration", 0.0)),
+                )
+                for index in preferred_slot_candidates:
+                    slot_start = float(updated[index]["slot_start"])
+                    if abs(slot_start - cue_start) <= 0.05:
+                        chosen_index = index
+                        start_offset_seconds = 0.0
+                        break
+                else:
+                    for index in range(len(updated)):
+                        slot_start = float(updated[index]["slot_start"])
+                        if abs(slot_start - cue_start) <= 0.05:
+                            chosen_index = index
+                            start_offset_seconds = 0.0
+                            break
+                    else:
+                        for index in preferred_slot_candidates:
+                            slot_start = float(updated[index]["slot_start"])
+                            slot_end = float(updated[index]["slot_end"])
+                            if slot_start <= cue_start < slot_end:
+                                chosen_index = index
+                                start_offset_seconds = max(cue_start - slot_start, 0.0)
+                                break
+                        else:
+                            for index in range(len(updated)):
+                                slot_start = float(updated[index]["slot_start"])
+                                slot_end = float(updated[index]["slot_end"])
+                                if slot_start <= cue_start < slot_end:
+                                    chosen_index = index
+                                    start_offset_seconds = max(cue_start - slot_start, 0.0)
+                                    break
+                            else:
+                                chosen_index = min(
+                                    preferred_slot_candidates,
+                                    key=lambda index: abs(float(updated[index]["slot_start"]) - cue_start),
+                                )
+                                start_offset_seconds = max(cue_start - float(updated[chosen_index]["slot_start"]), 0.0)
+
+            updated[chosen_index]["typewriter_text"] = effect.get("text")
+            updated[chosen_index]["typewriter_anchor"] = effect.get("anchor")
+            updated[chosen_index]["typewriter_chars_per_second"] = effect.get("chars_per_second")
+            updated[chosen_index]["typewriter_start_offset_seconds"] = round(start_offset_seconds, 3)
+            updated[chosen_index]["typewriter_duration_seconds"] = effect.get("duration_seconds")
+
+    return updated
+
+
+def ensure_opening_variety(
+    sequence: list[dict[str, Any]],
+    *,
+    assets: list[dict[str, Any]],
+    opening_seconds: float = 42.0,
+) -> list[dict[str, Any]]:
+    if not sequence:
+        return sequence
+
+    early_indexes = [index for index, item in enumerate(sequence) if float(item.get("slot_start", 0.0)) < opening_seconds]
+    if len(early_indexes) <= 2:
+        return sequence
+
+    non_cover_image_indexes = [
+        index
+        for index in early_indexes
+        if sequence[index].get("asset_type") == "image"
+        and sequence[index].get("role") != "cover"
+        and str(sequence[index].get("target_chapter") or "") == "ch1"
+        and str(sequence[index].get("chapter_id") or "") in {"ch1", ""}
+    ]
+    if non_cover_image_indexes:
+        return sequence
+
+    replacement_asset = next(
+        (
+            asset
+            for asset in assets
+            if asset.get("type") == "image"
+            and asset.get("role") != "cover"
+            and str(asset.get("chapter_id") or "") == "ch1"
+        ),
+        None,
+    )
+    if replacement_asset is None:
+        return sequence
+
+    target_indexes = [
+        index
+        for index in early_indexes
+        if sequence[index].get("asset_type") == "video" and str(sequence[index].get("target_chapter") or "") == "ch1"
+    ]
+    if not target_indexes:
+        return sequence
+
+    chosen_index = target_indexes[min(2, len(target_indexes) - 1)]
+    updated = [{**item} for item in sequence]
+    item = updated[chosen_index]
+    item["asset_type"] = "image"
+    item["asset_path"] = replacement_asset["path"]
+    item["chapter_id"] = replacement_asset.get("chapter_id")
+    item["asset_source"] = replacement_asset.get("source")
+    item["role"] = replacement_asset.get("role")
+    item["clip_id"] = replacement_asset.get("clip_id")
+    item["clip_start"] = 0.0
+    item["motion_preset"] = "static_hold"
+    item["motion_zoom_ratio"] = 1.0
+    return updated
+
+
+def escape_drawtext_text(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace("%", "\\%")
+        .replace(",", "\\,")
+    )
+
+
+def typewriter_drawtext_filters(
+    *,
+    text: str | None,
+    duration: float,
+    anchor: str | None,
+    chars_per_second: float | None,
+    start_offset_seconds: float | None,
+    duration_seconds: float | None,
+) -> list[str]:
+    raw_text = str(text or "").strip()
+    if not raw_text:
+        return []
+    cps = max(float(chars_per_second or 12), 4.0)
+    start_offset = max(float(start_offset_seconds or 0.0), 0.0)
+    visible_until = min(duration, start_offset + max(float(duration_seconds or duration), len(raw_text) / cps + 0.6))
+    anchor_name = str(anchor or "lower_left")
+    if anchor_name == "upper_right":
+        x_expr = "w-tw-96"
+        y_expr = "118"
+        font_size = 76
+    elif anchor_name == "upper_left":
+        x_expr = "96"
+        y_expr = "118"
+        font_size = 76
+    elif anchor_name == "upper_center":
+        x_expr = "(w-tw)/2"
+        y_expr = "110"
+        font_size = 84
+    elif anchor_name == "center":
+        x_expr = "(w-tw)/2"
+        y_expr = "h*0.18"
+        font_size = 88
+    else:
+        x_expr = "96"
+        y_expr = "h-210"
+        font_size = 74
+
+    filters: list[str] = []
+    characters = list(raw_text)
+    for index in range(1, len(characters) + 1):
+        prefix = "".join(characters[:index])
+        start = start_offset + ((index - 1) / cps)
+        end = visible_until if index == len(characters) else min(start_offset + (index / cps), visible_until)
+        if end <= start:
+            continue
+        filters.append(
+            "drawtext="
+            f"font='Arial Unicode MS':"
+            f"text='{escape_drawtext_text(prefix)}':"
+            f"fontcolor=white@1.0:fontsize={font_size}:"
+            "borderw=3:bordercolor=0x000000@0.9:"
+            "box=1:boxcolor=0x0E1117@0.82:boxborderw=28:"
+            f"x={x_expr}:y={y_expr}:"
+            f"enable='between(t\\,{start:.3f}\\,{end:.3f})'"
+        )
+    return filters
 
 
 def quote_concat_path(path: Path) -> str:
@@ -643,12 +1288,104 @@ def even_int(value: float) -> int:
 
 def image_filter(
     *,
+    asset_path: str | None,
     width: int,
     height: int,
     fps: int,
     duration: float,
     motion_preset: str | None,
     motion_zoom_ratio: float | None,
+    typewriter_text: str | None,
+    typewriter_anchor: str | None,
+    typewriter_chars_per_second: float | None,
+    typewriter_start_offset_seconds: float | None,
+    typewriter_duration_seconds: float | None,
+) -> str:
+    fade_out_start = max(duration - 0.2, 0.0)
+    is_card_asset = Path(str(asset_path or "")).name.startswith("card-")
+    scale_width = int(round(width * 0.86)) if is_card_asset else width
+    scale_height = int(round(height * 0.86)) if is_card_asset else height
+    if motion_preset == "static_hold" or (motion_zoom_ratio or 1.0) <= 1.001:
+        filters = [
+            f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=decrease",
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            "setsar=1",
+            f"fps={fps}",
+            "format=yuv420p",
+        ]
+        filters.extend(
+            typewriter_drawtext_filters(
+                text=typewriter_text,
+                duration=duration,
+                anchor=typewriter_anchor,
+                chars_per_second=typewriter_chars_per_second,
+                start_offset_seconds=typewriter_start_offset_seconds,
+                duration_seconds=typewriter_duration_seconds,
+            )
+        )
+        return ",".join(filters)
+
+    zoom_ratio = motion_zoom_ratio or 1.08
+    overscan_width = even_int(width * zoom_ratio)
+    overscan_height = even_int(height * zoom_ratio)
+    spare_x = max(overscan_width - width, 2)
+    spare_y = max(overscan_height - height, 2)
+    frame_denominator = max(int(round(duration * fps)) - 1, 1)
+
+    if motion_preset == "push_left":
+        x_expr = f"({spare_x}*(1-n/{frame_denominator}))"
+        y_expr = f"{spare_y}/2"
+    elif motion_preset == "tilt_down":
+        x_expr = f"{spare_x}/2"
+        y_expr = f"({spare_y}*n/{frame_denominator})"
+    elif motion_preset == "tilt_up":
+        x_expr = f"{spare_x}/2"
+        y_expr = f"({spare_y}*(1-n/{frame_denominator}))"
+    elif motion_preset == "diagonal_down":
+        x_expr = f"({spare_x}*n/{frame_denominator})"
+        y_expr = f"({spare_y}*n/{frame_denominator})"
+    elif motion_preset == "diagonal_up":
+        x_expr = f"({spare_x}*(1-n/{frame_denominator}))"
+        y_expr = f"({spare_y}*(1-n/{frame_denominator}))"
+    else:
+        x_expr = f"({spare_x}*n/{frame_denominator})"
+        y_expr = f"{spare_y}/2"
+
+    filters = [
+        f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=decrease",
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+        "setsar=1",
+        f"scale={overscan_width}:{overscan_height}",
+        f"crop={width}:{height}:x={x_expr}:y={y_expr}",
+        f"fps={fps}",
+        "format=yuv420p",
+    ]
+    filters.extend(
+        typewriter_drawtext_filters(
+            text=typewriter_text,
+            duration=duration,
+            anchor=typewriter_anchor,
+            chars_per_second=typewriter_chars_per_second,
+            start_offset_seconds=typewriter_start_offset_seconds,
+            duration_seconds=typewriter_duration_seconds,
+        )
+    )
+    return ",".join(filters)
+
+
+def video_filter(
+    *,
+    width: int,
+    height: int,
+    fps: int,
+    duration: float,
+    motion_preset: str | None,
+    motion_zoom_ratio: float | None,
+    typewriter_text: str | None,
+    typewriter_anchor: str | None,
+    typewriter_chars_per_second: float | None,
+    typewriter_start_offset_seconds: float | None,
+    typewriter_duration_seconds: float | None,
 ) -> str:
     fade_out_start = max(duration - 0.2, 0.0)
     zoom_ratio = motion_zoom_ratio or 1.08
@@ -677,24 +1414,24 @@ def image_filter(
         x_expr = f"({spare_x}*n/{frame_denominator})"
         y_expr = f"{spare_y}/2"
 
-    return (
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
-        f"setsar=1,"
-        f"scale={overscan_width}:{overscan_height},"
-        f"crop={width}:{height}:x={x_expr}:y={y_expr},"
-        f"fps={fps},format=yuv420p,"
-        f"fade=t=in:st=0:d=0.2,fade=t=out:st={fade_out_start:.3f}:d=0.2"
+    filters = [
+        f"scale={overscan_width}:{overscan_height}:force_original_aspect_ratio=increase",
+        f"crop={width}:{height}:x={x_expr}:y={y_expr}",
+        "setsar=1",
+        f"fps={fps}",
+        "format=yuv420p",
+    ]
+    filters.extend(
+        typewriter_drawtext_filters(
+            text=typewriter_text,
+            duration=duration,
+            anchor=typewriter_anchor,
+            chars_per_second=typewriter_chars_per_second,
+            start_offset_seconds=typewriter_start_offset_seconds,
+            duration_seconds=typewriter_duration_seconds,
+        )
     )
-
-
-def video_filter(*, width: int, height: int, fps: int, duration: float) -> str:
-    fade_out_start = max(duration - 0.2, 0.0)
-    return (
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},setsar=1,fps={fps},format=yuv420p,"
-        f"fade=t=in:st=0:d=0.2,fade=t=out:st={fade_out_start:.3f}:d=0.2"
-    )
+    return ",".join(filters)
 
 
 def render_sequence(
@@ -728,12 +1465,18 @@ def render_sequence(
                     f"{duration:.3f}",
                     "-vf",
                     image_filter(
+                        asset_path=str(asset_path),
                         width=width,
                         height=height,
                         fps=fps,
                         duration=duration,
                         motion_preset=item.get("motion_preset"),
                         motion_zoom_ratio=item.get("motion_zoom_ratio"),
+                        typewriter_text=item.get("typewriter_text"),
+                        typewriter_anchor=item.get("typewriter_anchor"),
+                        typewriter_chars_per_second=item.get("typewriter_chars_per_second"),
+                        typewriter_start_offset_seconds=item.get("typewriter_start_offset_seconds"),
+                        typewriter_duration_seconds=item.get("typewriter_duration_seconds"),
                     ),
                     "-an",
                     "-c:v",
@@ -757,7 +1500,19 @@ def render_sequence(
                     "-i",
                     str(asset_path),
                     "-vf",
-                    video_filter(width=width, height=height, fps=fps, duration=duration),
+                    video_filter(
+                        width=width,
+                        height=height,
+                        fps=fps,
+                        duration=duration,
+                        motion_preset=item.get("motion_preset"),
+                        motion_zoom_ratio=item.get("motion_zoom_ratio"),
+                        typewriter_text=item.get("typewriter_text"),
+                        typewriter_anchor=item.get("typewriter_anchor"),
+                        typewriter_chars_per_second=item.get("typewriter_chars_per_second"),
+                        typewriter_start_offset_seconds=item.get("typewriter_start_offset_seconds"),
+                        typewriter_duration_seconds=item.get("typewriter_duration_seconds"),
+                    ),
                     "-an",
                     "-c:v",
                     "libx264",
@@ -915,8 +1670,22 @@ def main() -> int:
     cues = parse_srt(subtitles)
     slots = build_slots(cues, total_duration)
     chapter_order = resolve_chapter_order(project_root, assets)
-    chapter_targets = build_chapter_targets(slots, chapter_order, assets, has_cover=cover_asset is not None)
-    sequence = assign_assets(slots, assets, chapter_targets)
+    chapter_targets = build_chapter_targets(
+        slots,
+        chapter_order,
+        assets,
+        has_cover=cover_asset is not None,
+        project_root=project_root,
+    )
+    chapter_effects_by_chapter = load_chapter_effects(project_root)
+    sequence = assign_assets(slots, assets, chapter_targets, chapter_effects_by_chapter, chapter_order)
+    sequence = align_typewriter_effects_to_subtitles(
+        sequence,
+        chapter_effects_by_chapter=chapter_effects_by_chapter,
+        subtitle_cues=cues,
+        chapter_order=chapter_order,
+    )
+    sequence = ensure_opening_variety(sequence, assets=assets)
     quality = build_quality_report(sequence, proof_assets_available=bool(proof_assets))
     render_sequence(
         sequence=sequence,

@@ -92,6 +92,8 @@ def test_render_narrated_cut_outputs_manifest_and_verification(tmp_path: Path) -
     manifest_file = tmp_path / "render-manifest.json"
     verification_file = tmp_path / "render-verification.md"
     qa_report_file = tmp_path / "assembly-qa-report.json"
+    subtitle_quality_file = tmp_path / "subtitle-quality-report.json"
+    scene_assembly_file = tmp_path / "scene-assembly-report.json"
     plan_file = tmp_path / "render-plan.json"
 
     run_command(
@@ -149,9 +151,11 @@ def test_render_narrated_cut_outputs_manifest_and_verification(tmp_path: Path) -
                 "subtitles": "subtitles.srt",
                 "output_video": "final.mp4",
                 "render_manifest_output": "render-manifest.json",
-                "verification_output": "render-verification.md",
-                "qa_report_output": "assembly-qa-report.json",
-                "assembly_strategy": "retime_existing_cut",
+                    "verification_output": "render-verification.md",
+                    "qa_report_output": "assembly-qa-report.json",
+                    "subtitle_quality_report_output": "subtitle-quality-report.json",
+                    "scene_assembly_report_output": "scene-assembly-report.json",
+                    "assembly_strategy": "retime_existing_cut",
                 "mix": {
                     "retain_original_audio": False,
                     "voiceover_gain_db": 0,
@@ -174,10 +178,14 @@ def test_render_narrated_cut_outputs_manifest_and_verification(tmp_path: Path) -
     assert manifest_file.exists()
     assert verification_file.exists()
     assert qa_report_file.exists()
+    assert subtitle_quality_file.exists()
+    assert scene_assembly_file.exists()
 
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
     assert manifest["assembly_strategy"] == "retime_existing_cut"
     assert manifest["subtitles"]["burned_in"] is True
+    assert manifest["subtitles"]["quality_report"] == "subtitle-quality-report.json"
+    assert manifest["scene_assembly"]["report"] == "scene-assembly-report.json"
     assert manifest["mix"]["retain_original_audio"] is False
     assert 0.45 <= manifest["retime"]["video_pts_factor"] <= 0.55
     assert manifest["output"]["duration_alignment_error_seconds"] <= 0.15
@@ -190,6 +198,11 @@ def test_render_narrated_cut_outputs_manifest_and_verification(tmp_path: Path) -
     qa_report = json.loads(qa_report_file.read_text(encoding="utf-8"))
     assert qa_report["status"] == "pass"
     assert qa_report["checks"]["freeze_detection"]["freeze_segments"] == []
+    subtitle_quality = json.loads(subtitle_quality_file.read_text(encoding="utf-8"))
+    assert subtitle_quality["status"] == "pass"
+    assert subtitle_quality["checks"]["subtitle_alignment"]["status"] == "pass"
+    scene_assembly = json.loads(scene_assembly_file.read_text(encoding="utf-8"))
+    assert scene_assembly["status"] == "pass"
 
     verification = verification_file.read_text(encoding="utf-8")
     assert "Render Verification" in verification

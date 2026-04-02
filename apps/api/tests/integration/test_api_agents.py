@@ -118,6 +118,26 @@ class TestAgentTemplates:
         assert "topic-selection" in skill_ids
         assert "xiaohongshu-account-ops" in skill_ids
 
+    def test_benchmark_analyst_template_emphasizes_bilibili_pattern_pack(self, client):
+        """Benchmark analyst should point to reusable Bilibili growth patterns, not just loose notes."""
+        resp = client.get("/api/agents/templates/benchmark-analyst")
+        assert resp.status_code == 200
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "bilibili-hook-patterns.json" in prompt
+        assert "开场留存" in prompt
+        assert "关注转化" in prompt
+
+    def test_angle_designer_template_emphasizes_attention_structure_artifacts(self, client):
+        """Angle designer should produce structured opening and follow-conversion artifacts."""
+        resp = client.get("/api/agents/templates/angle-designer")
+        assert resp.status_code == 200
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "attention-structure-template.json" in prompt
+        assert "follow-conversion-hooks.json" in prompt
+        assert "前 30 秒" in prompt
+
     def test_performance_analyst_exposes_xiaohongshu_account_metrics(self, client):
         """Performance analyst should carry Xiaohongshu-specific growth guidance."""
         resp = client.get("/api/agents/templates/performance-analyst")
@@ -130,6 +150,16 @@ class TestAgentTemplates:
         prompt = resp.json()["config"]["system_prompt"]
         assert "收藏" in prompt
         assert "关注转化" in prompt
+
+    def test_competitive_reviewer_template_checks_opening_and_follow_conversion(self, client):
+        """Competitive reviewer should score opening hold and follow conversion explicitly."""
+        resp = client.get("/api/agents/templates/competitive-reviewer")
+        assert resp.status_code == 200
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "opening_hold_power" in prompt
+        assert "follow_conversion_power" in prompt
+        assert "opening-scorecard.json" in prompt
 
     def test_video_production_director_exposes_execution_stack(self, client):
         """The video production director template can run narrated video production end to end."""
@@ -150,6 +180,15 @@ class TestAgentTemplates:
         assert "run_render_workflow.py" in prompt
         assert "--content-id" in prompt
         assert "../../../extensions/skills/video-postproduction-assembly/scripts/run_render_workflow.py" in prompt
+        assert "voice-performance-plan.json" in prompt
+        assert "subtitle-style-pack.json" in prompt
+        assert "subtitle-quality-report.json" in prompt
+        assert "scene-asset-plan.json" in prompt
+        assert "visual-diversity-report.json" in prompt
+        assert "minimax-shot-plan.json" in prompt
+        assert "scene-manifest.json" in prompt
+        assert "transition-plan.json" in prompt
+        assert "scene-assembly-report.json" in prompt
 
     def test_quality_specialist_templates_are_discoverable(self, client):
         """New media ops specialists appear in the built-in template list."""
@@ -184,6 +223,8 @@ class TestAgentTemplates:
         assert "render-manifest" in prompt
         assert "publish-manifest-auto.json" in prompt
         assert "publish-result-auto.json" in prompt
+        assert "prelive-quality-summary.json" in prompt
+        assert "workflow-quality-gate.json" in prompt
         assert "--live" in prompt
 
     def test_applying_template_updates_project_runtime_and_model(self, client, sample_project):

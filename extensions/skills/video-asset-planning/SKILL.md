@@ -35,9 +35,9 @@ version: 1.0.0
 
 当前默认约束：
 
-- MiniMax 视频生成每天最多 `6` 次调用
+- MiniMax 视频生成额度必须从项目级 `generation-budget.json` 读取，不再把每日次数硬编码在 skill 里
 - 单次调用默认只产出 `6` 秒
-- 每日可支配的原生生成时长上限按 `36` 秒计算
+- 如果项目没有显式额度配置，默认只批准最关键的 `1-2` 个镜头槽位
 
 在这套工作流里，视频生成额度按“镜头槽位”管理，而不是按“想试就试”管理。
 
@@ -63,15 +63,21 @@ version: 1.0.0
 最终输出至少包含：
 
 - `asset_source_map`
+- `scene_asset_plan`
+- `visual_evidence_map`
 - `must_capture_list`
 - `existing_asset_reuse`
 - `source_manifest`
 - `chapter_coverage_targets`
+- `generation_budget`
 - `video_generation_quota`
 - `quota_snapshot`
 - `reserved_generation_slots`
+- `minimax_shot_plan`
+- `generation_ledger`
 - `approved_generated_assets`
 - `blocked_generated_assets`
+- `visual_diversity_report`
 - `generation_budget_decision`
 - `tts_strategy`
 - `subtitle_strategy`
@@ -98,6 +104,28 @@ python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py \
 
 对解释型视频，图卡导出属于确定性资产处理，不应和素材搜集或高成本生成混为一谈。
 
+在进入 render 之前，还应优先跑这三步：
+
+```bash
+python3 extensions/skills/video-asset-planning/scripts/build_scene_asset_plan.py \
+  --project-root data/media-ops/<content-id>
+
+python3 extensions/skills/video-asset-planning/scripts/audit_visual_diversity.py \
+  --project-root data/media-ops/<content-id>
+
+python3 extensions/skills/video-asset-planning/scripts/build_minimax_shot_plan.py \
+  --project-root data/media-ops/<content-id>
+```
+
+这会产出：
+
+- `assets/scene-asset-plan.json`
+- `assets/visual-evidence-map.json`
+- `assets/generation-budget.json`
+- `assets/visual-diversity-report.json`
+- `assets/minimax-shot-plan.json`
+- `assets/generation-ledger.json`
+
 ## Security Rules
 
 - MiniMax、TTS、图像、视频、音乐相关密钥只允许来自环境变量
@@ -112,5 +140,7 @@ python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py \
 - 对中长视频，优先保证章节证据和过渡，而不是堆砌花哨镜头
 - 对中长视频，优先让网上合法片段承担情境、转场和气氛镜头，核心证明仍由自有素材或可验证证据承担
 - 对中长视频，每章都要给 `required_coverage_seconds`、候选素材数目标和 fallback
+- 每章都要先写清 `proof_asset`、`supporting_b_roll`、`fallback_graphics` 和 `max_repeat_uses`
+- `visual-diversity-report.json` 不过线时，不进入 final render
 - 任何获批的生成式素材都要说明它具体提高了哪一项竞争力
 - 单条内容默认不应吞掉当天大部分 MiniMax 视频额度；如果要用 `3+` 次，先给出更便宜方案为何不够用

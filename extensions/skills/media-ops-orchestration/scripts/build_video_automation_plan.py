@@ -69,7 +69,10 @@ def detect_content_packet(project_root: Path) -> Path:
 
 
 def relative_to_project(path: Path, project_root: Path) -> str:
-    return str(path.resolve().relative_to(project_root.resolve()))
+    try:
+        return str(path.resolve().relative_to(project_root.resolve()))
+    except ValueError:
+        return str(path.resolve())
 
 
 def first_path(packet: dict[str, Any], *keys: str) -> str | None:
@@ -127,6 +130,9 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
     lines.append(f"- `graphics_png_count`: `{payload['summary']['graphics_png_count']}`")
     lines.append(f"- `source_manifest_hold_count`: `{payload['summary']['source_manifest_hold_count']}`")
     lines.append(f"- `chapter_coverage_status`: `{payload['summary']['chapter_coverage_status']}`")
+    lines.append(f"- `scene_asset_plan_exists`: `{payload['summary']['scene_asset_plan_exists']}`")
+    lines.append(f"- `visual_diversity_status`: `{payload['summary']['visual_diversity_status']}`")
+    lines.append(f"- `approved_generation_slot_count`: `{payload['summary']['approved_generation_slot_count']}`")
     lines.append(f"- `voiceover_status`: `{payload['summary']['voiceover_status']}`")
     lines.append(f"- `subtitle_exists`: `{payload['summary']['subtitle_exists']}`")
     lines.append(f"- `render_manifest_exists`: `{payload['summary']['render_manifest_exists']}`")
@@ -173,6 +179,8 @@ def main() -> int:
     root_png_assets = sorted(path for path in root_assets_dir.glob("*.png") if path.is_file())
 
     source_manifest_path = project_root / "sources" / "source-manifest.json"
+    exploration_shortlist_path = project_root / "sources" / "exploration-shortlist.json"
+    exploration_ingest_path = project_root / "sources" / "exploration-ingest-manifest.json"
     source_manifest = load_json(source_manifest_path)
     license_summary = source_manifest.get("license_summary") if isinstance(source_manifest.get("license_summary"), dict) else {}
     hold_items = source_manifest.get("hold_items") if isinstance(source_manifest.get("hold_items"), list) else []
@@ -183,6 +191,15 @@ def main() -> int:
 
     prompt_proof_pack_path = project_root / "sources" / "prompt-proof-pack.json"
     graphics_export_manifest = project_root / "assets" / "export-manifest.json"
+    scene_asset_plan_path = project_root / "assets" / "scene-asset-plan.json"
+    visual_evidence_map_path = project_root / "assets" / "visual-evidence-map.json"
+    generation_budget_path = project_root / "assets" / "generation-budget.json"
+    minimax_shot_plan_path = project_root / "assets" / "minimax-shot-plan.json"
+    generation_ledger_path = project_root / "assets" / "generation-ledger.json"
+    visual_diversity_report_path = project_root / "assets" / "visual-diversity-report.json"
+    visual_diversity_report = load_json(visual_diversity_report_path)
+    workflow_quality_gate_path = project_root / "review" / "workflow-quality-gate.json"
+    workflow_quality_gate = load_json(workflow_quality_gate_path)
     voiceover_profile_path = project_root / "content" / "postproduction" / "voiceover-profile.json"
     voiceover_profile = load_json(voiceover_profile_path)
     render_targets = voiceover_profile.get("render_targets") if isinstance(voiceover_profile.get("render_targets"), dict) else {}
@@ -222,11 +239,22 @@ def main() -> int:
                 "--providers",
                 "auto",
                 "--download-approved",
+                "--download-exploration",
+                "--max-results-per-query",
+                "18",
+                "--max-shortlist-per-chapter",
+                "12",
+                "--approved-per-chapter",
+                "6",
+                "--max-exploration-per-chapter",
+                "18",
             ],
             outputs=[
                 "sources/source-manifest.json",
                 "sources/source-shortlist.json",
                 "sources/asset-ingest-manifest.json",
+                "sources/exploration-shortlist.json",
+                "sources/exploration-ingest-manifest.json",
                 "sources/chapter-coverage-report.json",
             ],
             blocking=coverage_status != "pass",
@@ -253,6 +281,82 @@ def main() -> int:
                 "assets/export-manifest.json",
                 "assets/graphics/*.png",
                 "assets/*.png",
+            ],
+            blocking=False,
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="workflow-quality-gate",
+            title="汇总前四项 workflow 质量门禁",
+            status="completed" if workflow_quality_gate_path.exists() and workflow_quality_gate.get("overall_status") == "pass" else "ready_to_run",
+            why="发布前不应各看各的局部门禁，必须统一汇总 growth / voice / subtitle / visual / scene / budget 状态。",
+            command=[
+                "python3",
+                "extensions/skills/media-ops-orchestration/scripts/build_workflow_quality_gate.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "review/workflow-quality-gate.json",
+                "review/upgrade-status-board.json",
+            ],
+            blocking=workflow_quality_gate_path.exists() and workflow_quality_gate.get("overall_status") not in {None, "pass"},
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="scene-asset-plan",
+            title="生成分章节视觉素材计划",
+            status="completed" if scene_asset_plan_path.exists() and visual_evidence_map_path.exists() and generation_budget_path.exists() else "ready_to_run",
+            why="每章该用什么证明、什么 B-roll、什么 fallback、哪些镜头允许生成，应先结构化，不再靠临场脑补。",
+            command=[
+                "python3",
+                "extensions/skills/video-asset-planning/scripts/build_scene_asset_plan.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "assets/scene-asset-plan.json",
+                "assets/visual-evidence-map.json",
+                "assets/generation-budget.json",
+            ],
+            blocking=False,
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="visual-diversity-audit",
+            title="审计画面多样性与重复素材风险",
+            status="completed" if visual_diversity_report_path.exists() and visual_diversity_report.get("status") == "pass" else "ready_to_run",
+            why="不能靠同一素材在一个视频里反复顶时长，视觉多样性需要单独门禁。",
+            command=[
+                "python3",
+                "extensions/skills/video-asset-planning/scripts/audit_visual_diversity.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "assets/visual-diversity-report.json",
+            ],
+            blocking=visual_diversity_report_path.exists() and visual_diversity_report.get("status") not in {None, "pass"},
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="minimax-shot-plan",
+            title="生成 MiniMax 镜头计划与调用台账",
+            status="completed" if minimax_shot_plan_path.exists() and generation_ledger_path.exists() else "ready_to_run",
+            why="高成本生成镜头必须先过预算门禁，并留下调用台账，不应边做边试。",
+            command=[
+                "python3",
+                "extensions/skills/video-asset-planning/scripts/build_minimax_shot_plan.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "assets/minimax-shot-plan.json",
+                "assets/generation-ledger.json",
             ],
             blocking=False,
         )
@@ -329,6 +433,10 @@ def main() -> int:
         notes.append("chapter coverage gate 还没 pass，自动化素材补齐后需要重跑 coverage 判断。")
     if not prompt_proof_pack_path.exists():
         notes.append("当前包缺少结构化 prompt proof pack，人工录屏已不应再作为默认依赖。")
+    if visual_diversity_report.get("status") and visual_diversity_report.get("status") != "pass":
+        notes.append("visual diversity gate 还没 pass，需要减少重复素材或补更多章节资产。")
+    if workflow_quality_gate.get("overall_status") and workflow_quality_gate.get("overall_status") != "pass":
+        notes.append("workflow quality gate 还没 pass，发布前需要先修复 revise / block 维度。")
     notes.append("自治模式下，人工录屏只允许作为 fallback，不应再作为 Production Sprint Phase 1 的默认动作。")
     notes.append("B-roll、图卡导出、后期装配三条链都已有本地 skill 或脚本入口，应先跑自动入口，再看是否需要人工干预。")
 
@@ -352,6 +460,14 @@ def main() -> int:
             "source_manifest_hold_count": len(hold_items),
             "approved_source_count": license_summary.get("approved_count", 0),
             "chapter_coverage_status": coverage_status,
+            "scene_asset_plan_exists": scene_asset_plan_path.exists(),
+            "visual_evidence_map_exists": visual_evidence_map_path.exists(),
+            "visual_diversity_status": visual_diversity_report.get("status"),
+            "approved_generation_slot_count": len(load_json(minimax_shot_plan_path).get("approved_slots", []))
+            if minimax_shot_plan_path.exists()
+            else 0,
+            "generation_budget_exists": generation_budget_path.exists(),
+            "workflow_quality_status": workflow_quality_gate.get("overall_status"),
             "voiceover_status": voiceover_status,
             "export_manifest_exists": graphics_export_manifest.exists(),
             "prompt_proof_pack_exists": prompt_proof_pack_path.exists(),

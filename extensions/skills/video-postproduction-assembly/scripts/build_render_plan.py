@@ -87,6 +87,10 @@ def find_first_existing(paths: list[Path | None]) -> Path | None:
     return None
 
 
+def sanitize_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_") or "cue"
+
+
 def find_voiceover_profile(project_root: Path) -> Path | None:
     candidate = project_root / "content" / "postproduction" / "voiceover-profile.json"
     return candidate if candidate.exists() else None
@@ -174,7 +178,7 @@ def build_sound_design_mix(
 
     bgm_tracks: list[dict[str, Any]] = []
     if bgm_asset is not None:
-        hook_window_seconds = round(min(30.0, estimated_duration or 30.0), 3)
+        hook_window_seconds = 30.0
         hook_gain_db = max(float(mix_defaults.get("bgm_target_db", -26.0)), -24.0)
         bgm_tracks.append(
             {
@@ -220,6 +224,44 @@ def build_sound_design_mix(
         "bgm_tracks": bgm_tracks,
         "sfx_cues": sfx_cues,
     }
+
+
+def build_typewriter_sfx_cues(project_root: Path, existing_sfx_cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    auto_base_cut_plan = load_json(project_root / "content" / "postproduction" / "auto-base-cut-plan.json")
+    sequence = auto_base_cut_plan.get("sequence") if isinstance(auto_base_cut_plan.get("sequence"), list) else []
+    if not sequence:
+        return []
+
+    existing_starts = [
+        float(cue.get("start_seconds", 0.0))
+        for cue in existing_sfx_cues
+        if isinstance(cue, dict) and str(cue.get("preset") or "") in {"typing_burst", "impact_hit"}
+    ]
+    extra_cues: list[dict[str, Any]] = []
+    for item in sequence:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("typewriter_text") or "").strip()
+        if not text:
+            continue
+        slot_start = float(item.get("slot_start", 0.0))
+        cue_start = round(slot_start + float(item.get("typewriter_start_offset_seconds") or 0.0), 3)
+        if cue_start < 1.0:
+            continue
+        if any(abs(cue_start - existing_start) <= 0.9 for existing_start in existing_starts):
+            continue
+        label_root = sanitize_label(text[:24])
+        for burst_index, offset in enumerate((0.0, 0.22), start=1):
+            extra_cues.append(
+                {
+                    "label": f"typewriter_{label_root}_{burst_index}",
+                    "preset": "typing_burst",
+                    "start_seconds": round(cue_start + offset, 3),
+                    "gain_db": -5.0,
+                }
+            )
+        existing_starts.append(cue_start)
+    return extra_cues
 
 
 def parse_source_video_from_verification(project_root: Path) -> Path | None:
@@ -338,6 +380,16 @@ def parse_args() -> argparse.Namespace:
         help="Assembly QA report output path, relative to project root.",
     )
     parser.add_argument(
+        "--subtitle-quality-report-output",
+        default="review/subtitle-quality-report.json",
+        help="Subtitle quality report output path, relative to project root.",
+    )
+    parser.add_argument(
+        "--scene-assembly-report-output",
+        default="review/scene-assembly-report.json",
+        help="Scene assembly report output path, relative to project root.",
+    )
+    parser.add_argument(
         "--assembly-strategy",
         choices=["retime_existing_cut", "rebuild_timeline", "review_only"],
         help="Assembly strategy to record in the render plan. Defaults to content packet value or retime_existing_cut.",
@@ -425,6 +477,89 @@ def ensure_subtitles(
     return output_path if output_path.exists() else None
 
 
+def ensure_subtitle_style_pack(project_root: Path) -> Path | None:
+    style_pack_path = project_root / "content" / "postproduction" / "subtitle-style-pack.json"
+    if style_pack_path.exists():
+        return style_pack_path
+
+    builder = (
+        repo_root()
+        / "extensions"
+        / "skills"
+        / "minimax-narration-postproduction"
+        / "scripts"
+        / "build_subtitle_style_pack.py"
+    )
+    if not builder.exists():
+        return None
+
+    run_command([sys.executable, str(builder), "--project-root", str(project_root)])
+    return style_pack_path if style_pack_path.exists() else None
+
+
+def ensure_audio_cue_sheet(project_root: Path) -> Path | None:
+    cue_sheet_path = project_root / "content" / "postproduction" / "audio-cue-sheet.json"
+    if cue_sheet_path.exists():
+        payload = load_json(cue_sheet_path)
+        bgm_tracks = payload.get("bgm_tracks") if isinstance(payload.get("bgm_tracks"), list) else []
+        sfx_cues = payload.get("sfx_cues") if isinstance(payload.get("sfx_cues"), list) else []
+        chapter_audio_beats = payload.get("chapter_audio_beats") if isinstance(payload.get("chapter_audio_beats"), list) else []
+        if bgm_tracks or sfx_cues or chapter_audio_beats:
+            return cue_sheet_path
+
+        cue_sheet_path.unlink()
+
+    if cue_sheet_path.exists():
+        return cue_sheet_path
+
+    builder = Path(__file__).with_name("build_audio_cue_sheet.py")
+    if not builder.exists():
+        return None
+
+    run_command([sys.executable, str(builder), "--project-root", str(project_root)])
+    return cue_sheet_path if cue_sheet_path.exists() else None
+
+
+def ensure_scene_manifest(project_root: Path) -> Path | None:
+    manifest_path = project_root / "content" / "postproduction" / "scene-manifest.json"
+    if manifest_path.exists():
+        return manifest_path
+
+    builder = Path(__file__).with_name("build_scene_manifest.py")
+    if not builder.exists():
+        return None
+
+    run_command([sys.executable, str(builder), "--project-root", str(project_root)])
+    return manifest_path if manifest_path.exists() else None
+
+
+def ensure_transition_plan(project_root: Path) -> tuple[Path | None, Path | None]:
+    transition_path = project_root / "content" / "postproduction" / "transition-plan.json"
+    emphasis_path = project_root / "content" / "postproduction" / "emphasis-fx-plan.json"
+    scene_manifest = load_json(project_root / "content" / "postproduction" / "scene-manifest.json")
+    scene_count = len(scene_manifest.get("scenes", [])) if isinstance(scene_manifest.get("scenes"), list) else 0
+    if transition_path.exists() and emphasis_path.exists():
+        emphasis_payload = load_json(emphasis_path)
+        transition_payload = load_json(transition_path)
+        scene_fx = emphasis_payload.get("scene_fx") if isinstance(emphasis_payload.get("scene_fx"), list) else []
+        transitions = transition_payload.get("transitions") if isinstance(transition_payload.get("transitions"), list) else []
+        if scene_count == 0 or scene_fx or transitions:
+            return transition_path, emphasis_path
+
+        transition_path.unlink()
+        emphasis_path.unlink()
+
+    builder = Path(__file__).with_name("build_transition_plan.py")
+    if not builder.exists():
+        return transition_path if transition_path.exists() else None, emphasis_path if emphasis_path.exists() else None
+
+    run_command([sys.executable, str(builder), "--project-root", str(project_root)])
+    return (
+        transition_path if transition_path.exists() else None,
+        emphasis_path if emphasis_path.exists() else None,
+    )
+
+
 def ensure_source_video(
     project_root: Path,
     *,
@@ -434,36 +569,82 @@ def ensure_source_video(
     subtitles: Path | None,
 ) -> Path:
     auto_base_cut = (project_root / "content" / "postproduction" / "auto-base-cut.mp4").resolve()
-    if assembly_strategy == "rebuild_timeline" and requested_source_video is None and auto_base_cut.exists():
-        return auto_base_cut
+    auto_base_cut_plan = (project_root / "content" / "postproduction" / "auto-base-cut-plan.json").resolve()
+    should_rebuild_timeline = assembly_strategy == "rebuild_timeline" and requested_source_video is None
+    if assembly_strategy == "rebuild_timeline" and requested_source_video is None and auto_base_cut.exists() and auto_base_cut_plan.exists():
+        dependencies = [
+            project_root / "assets" / "scene-asset-plan.json",
+            project_root / "content" / "postproduction" / "scene-manifest.json",
+            project_root / "content" / "postproduction" / "emphasis-fx-plan.json",
+            project_root / "content" / "postproduction" / "audio-cue-sheet.json",
+            voiceover_audio,
+            subtitles,
+        ]
+        output_mtime = auto_base_cut.stat().st_mtime
+        plan_mtime = auto_base_cut_plan.stat().st_mtime
+        stale = False
+        for dependency in dependencies:
+            if dependency is None or not dependency.exists():
+                continue
+            if dependency.stat().st_mtime > output_mtime or dependency.stat().st_mtime > plan_mtime:
+                stale = True
+                break
+        if not stale:
+            return auto_base_cut
+    elif should_rebuild_timeline and (not auto_base_cut.exists() or not auto_base_cut_plan.exists()):
+        stale = True
+    else:
+        stale = False
+
+    if should_rebuild_timeline and stale:
+        visual_builder = Path(__file__).with_name("build_visual_timeline.py")
+        if not visual_builder.exists():
+            raise FileNotFoundError("No source video found and build_visual_timeline.py is unavailable.")
+
+        output_path = auto_base_cut
+        command = [
+            sys.executable,
+            str(visual_builder),
+            "--project-root",
+            str(project_root),
+            "--voiceover-audio",
+            relative_to_root(voiceover_audio, project_root),
+            "--output-video",
+            relative_to_root(output_path, project_root),
+        ]
+        if subtitles is not None and subtitles.exists():
+            command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
+        run_command(command)
+        if not output_path.exists():
+            raise FileNotFoundError(f"Auto-built source video missing after rebuild_timeline step: {output_path}")
+        return output_path
 
     try:
         return detect_source_video(project_root, requested_source_video)
     except FileNotFoundError:
         if assembly_strategy != "rebuild_timeline":
             raise
+        visual_builder = Path(__file__).with_name("build_visual_timeline.py")
+        if not visual_builder.exists():
+            raise FileNotFoundError("No source video found and build_visual_timeline.py is unavailable.")
 
-    visual_builder = Path(__file__).with_name("build_visual_timeline.py")
-    if not visual_builder.exists():
-        raise FileNotFoundError("No source video found and build_visual_timeline.py is unavailable.")
-
-    output_path = auto_base_cut
-    command = [
-        sys.executable,
-        str(visual_builder),
-        "--project-root",
-        str(project_root),
-        "--voiceover-audio",
-        relative_to_root(voiceover_audio, project_root),
-        "--output-video",
-        relative_to_root(output_path, project_root),
-    ]
-    if subtitles is not None and subtitles.exists():
-        command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
-    run_command(command)
-    if not output_path.exists():
-        raise FileNotFoundError(f"Auto-built source video missing after rebuild_timeline step: {output_path}")
-    return output_path
+        output_path = auto_base_cut
+        command = [
+            sys.executable,
+            str(visual_builder),
+            "--project-root",
+            str(project_root),
+            "--voiceover-audio",
+            relative_to_root(voiceover_audio, project_root),
+            "--output-video",
+            relative_to_root(output_path, project_root),
+        ]
+        if subtitles is not None and subtitles.exists():
+            command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
+        run_command(command)
+        if not output_path.exists():
+            raise FileNotFoundError(f"Auto-built source video missing after rebuild_timeline step: {output_path}")
+        return output_path
 
 
 def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
@@ -515,15 +696,33 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
     render_manifest_output = resolve_candidate(project_root, args.render_manifest_output)
     verification_output = resolve_candidate(project_root, args.verification_output)
     qa_report_output = resolve_candidate(project_root, args.qa_report_output)
+    subtitle_quality_report_output = resolve_candidate(project_root, args.subtitle_quality_report_output)
+    scene_assembly_report_output = resolve_candidate(project_root, args.scene_assembly_report_output)
 
-    if render_plan_output is None or render_manifest_output is None or verification_output is None or qa_report_output is None:
+    if (
+        render_plan_output is None
+        or render_manifest_output is None
+        or verification_output is None
+        or qa_report_output is None
+        or subtitle_quality_report_output is None
+        or scene_assembly_report_output is None
+    ):
         raise ValueError("Render output paths must resolve to concrete filesystem paths.")
 
     render_plan_output.parent.mkdir(parents=True, exist_ok=True)
     render_manifest_output.parent.mkdir(parents=True, exist_ok=True)
     verification_output.parent.mkdir(parents=True, exist_ok=True)
     qa_report_output.parent.mkdir(parents=True, exist_ok=True)
+    subtitle_quality_report_output.parent.mkdir(parents=True, exist_ok=True)
+    scene_assembly_report_output.parent.mkdir(parents=True, exist_ok=True)
     output_video.parent.mkdir(parents=True, exist_ok=True)
+
+    subtitle_style_pack_path = ensure_subtitle_style_pack(project_root)
+    audio_cue_sheet_path = ensure_audio_cue_sheet(project_root)
+    scene_manifest_path = ensure_scene_manifest(project_root)
+    transition_plan_path, emphasis_fx_plan_path = ensure_transition_plan(project_root)
+    subtitle_style_pack = load_json(subtitle_style_pack_path)
+    audio_cue_sheet = load_json(audio_cue_sheet_path)
 
     platforms = primary_packet.get("platforms") or ([voiceover_profile.get("platform")] if voiceover_profile.get("platform") else [])
     mix_plan = {
@@ -532,14 +731,34 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         "voiceover_gain_db": 0,
         "voiceover_delay_ms": 0,
     }
-    mix_plan.update(
-        build_sound_design_mix(
-            project_root=project_root,
-            subtitles=subtitles,
-            deliverable_type=primary_packet.get("deliverable_type"),
-            mix_defaults=mix_defaults,
-        )
+    default_sound_design = build_sound_design_mix(
+        project_root=project_root,
+        subtitles=subtitles,
+        deliverable_type=primary_packet.get("deliverable_type"),
+        mix_defaults=mix_defaults,
     )
+    ducking_rules = audio_cue_sheet.get("ducking_rules") if isinstance(audio_cue_sheet.get("ducking_rules"), dict) else {}
+    if ducking_rules:
+        mix_plan.update(ducking_rules)
+    bgm_tracks = audio_cue_sheet.get("bgm_tracks") if isinstance(audio_cue_sheet.get("bgm_tracks"), list) else []
+    sfx_cues = audio_cue_sheet.get("sfx_cues") if isinstance(audio_cue_sheet.get("sfx_cues"), list) else []
+    typewriter_sfx_cues = build_typewriter_sfx_cues(project_root, sfx_cues)
+    if typewriter_sfx_cues:
+        sfx_cues = [*sfx_cues, *typewriter_sfx_cues]
+    if bgm_tracks or sfx_cues or ducking_rules:
+        if bgm_tracks:
+            mix_plan["bgm_tracks"] = bgm_tracks
+        elif "bgm_tracks" in default_sound_design:
+            mix_plan["bgm_tracks"] = default_sound_design["bgm_tracks"]
+        if sfx_cues:
+            mix_plan["sfx_cues"] = sfx_cues
+        elif "sfx_cues" in default_sound_design:
+            mix_plan["sfx_cues"] = default_sound_design["sfx_cues"]
+        for key, value in default_sound_design.items():
+            if key not in mix_plan:
+                mix_plan[key] = value
+    else:
+        mix_plan.update(default_sound_design)
     plan = {
         "workspace_root": str(project_root),
         "content_id": content_id,
@@ -552,6 +771,8 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         "render_manifest_output": relative_to_root(render_manifest_output, project_root),
         "verification_output": relative_to_root(verification_output, project_root),
         "qa_report_output": relative_to_root(qa_report_output, project_root),
+        "subtitle_quality_report_output": relative_to_root(subtitle_quality_report_output, project_root),
+        "scene_assembly_report_output": relative_to_root(scene_assembly_report_output, project_root),
         "assembly_strategy": assembly_strategy,
         "retime": {
             "mode": "auto_match_voiceover",
@@ -575,13 +796,19 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
             ],
         },
         "mix": mix_plan,
-        "subtitle_style": DEFAULT_SUBTITLE_STYLE,
+        "subtitle_style": subtitle_style_pack.get("ass_force_style", DEFAULT_SUBTITLE_STYLE),
         "context": {
             "voiceover_profile": relative_to_root(voiceover_profile_path, project_root) if voiceover_profile_path else None,
             "content_packet": relative_to_root(content_packet_path, project_root) if content_packet_path else None,
             "mix_notes": "content/postproduction/mix-notes.md"
             if (project_root / "content" / "postproduction" / "mix-notes.md").exists()
             else None,
+            "voice_performance_plan": render_targets.get("voice_performance_plan"),
+            "subtitle_style_pack": relative_to_root(subtitle_style_pack_path, project_root) if subtitle_style_pack_path else None,
+            "audio_cue_sheet": relative_to_root(audio_cue_sheet_path, project_root) if audio_cue_sheet_path else None,
+            "scene_manifest": relative_to_root(scene_manifest_path, project_root) if scene_manifest_path else None,
+            "transition_plan": relative_to_root(transition_plan_path, project_root) if transition_plan_path else None,
+            "emphasis_fx_plan": relative_to_root(emphasis_fx_plan_path, project_root) if emphasis_fx_plan_path else None,
         },
     }
     return plan, render_plan_output

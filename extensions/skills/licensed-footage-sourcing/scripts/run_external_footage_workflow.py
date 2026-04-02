@@ -31,6 +31,17 @@ BLOCKED_SOURCE_TYPES = [
     "pirated-compilation",
 ]
 
+DEFAULT_MAX_RESULTS_PER_QUERY = 12
+DEFAULT_MAX_SHORTLIST_PER_CHAPTER = 12
+DEFAULT_APPROVED_PER_CHAPTER = 6
+DEFAULT_MAX_EXPLORATION_PER_CHAPTER = 18
+PROVIDER_PRIORITY = {
+    "pexels": 4,
+    "pixabay": 4,
+    "mock-stock": 4,
+    "yt-dlp": 1,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -48,20 +59,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-results-per-query",
         type=int,
-        default=4,
+        default=DEFAULT_MAX_RESULTS_PER_QUERY,
         help="Maximum provider results fetched for each search query.",
     )
     parser.add_argument(
         "--max-shortlist-per-chapter",
         type=int,
-        default=3,
+        default=DEFAULT_MAX_SHORTLIST_PER_CHAPTER,
         help="Maximum shortlisted results kept for each chapter.",
     )
     parser.add_argument(
         "--approved-per-chapter",
         type=int,
-        default=1,
+        default=DEFAULT_APPROVED_PER_CHAPTER,
         help="Maximum approved manifest entries kept for each chapter.",
+    )
+    parser.add_argument(
+        "--max-exploration-per-chapter",
+        type=int,
+        default=DEFAULT_MAX_EXPLORATION_PER_CHAPTER,
+        help="Maximum exploration-pool results kept for each chapter.",
     )
     parser.add_argument(
         "--download-approved",
@@ -69,10 +86,21 @@ def parse_args() -> argparse.Namespace:
         help="Download approved assets into assets/external and write an ingest manifest.",
     )
     parser.add_argument(
+        "--download-exploration",
+        action="store_true",
+        help="Download exploration-pool assets into assets/exploration and write a separate ingest manifest.",
+    )
+    parser.add_argument(
         "--download-limit",
         type=int,
         default=0,
         help="Maximum number of approved assets to download. 0 means no explicit limit.",
+    )
+    parser.add_argument(
+        "--exploration-download-limit",
+        type=int,
+        default=0,
+        help="Maximum number of exploration assets to download. 0 means no explicit limit.",
     )
     parser.add_argument(
         "--yt-dlp-bin",
@@ -93,6 +121,16 @@ def parse_args() -> argparse.Namespace:
         "--asset-ingest-output",
         default="sources/asset-ingest-manifest.json",
         help="Output path for the asset ingest manifest, relative to the project root.",
+    )
+    parser.add_argument(
+        "--exploration-shortlist-output",
+        default="sources/exploration-shortlist.json",
+        help="Output path for the exploration shortlist, relative to the project root.",
+    )
+    parser.add_argument(
+        "--exploration-ingest-output",
+        default="sources/exploration-ingest-manifest.json",
+        help="Output path for the exploration ingest manifest, relative to the project root.",
     )
     parser.add_argument(
         "--coverage-report-output",
@@ -124,6 +162,20 @@ def resolve_project_root(args: argparse.Namespace) -> Path:
 
     media_root = Path(args.media_ops_root).resolve() if args.media_ops_root else default_media_ops_root()
     return (media_root / args.content_id).resolve()
+
+
+def prefer_http_proxy_over_all_proxy() -> None:
+    http_proxy = os.environ.get("http_proxy") or os.environ.get("HTTP_PROXY")
+    https_proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+    all_proxy = os.environ.get("all_proxy") or os.environ.get("ALL_PROXY")
+    if not all_proxy:
+        return
+    if not str(all_proxy).lower().startswith("socks"):
+        return
+    if not (http_proxy or https_proxy):
+        return
+    os.environ.pop("all_proxy", None)
+    os.environ.pop("ALL_PROXY", None)
 
 
 def load_json(path: Path | None) -> dict[str, Any]:
@@ -356,7 +408,50 @@ class YtDlpProvider(FootageProvider):
         self._binary = binary
 
     def search(self, query: str, limit: int) -> list[SearchResult]:
-        return []
+        command = [
+            self._binary,
+            "--dump-single-json",
+            "--flat-playlist",
+            "--no-warnings",
+            f"ytsearch{limit}:{query}",
+        ]
+        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+        payload = json.loads(completed.stdout)
+        entries = payload.get("entries")
+        if not isinstance(entries, list):
+            return []
+        normalized: list[SearchResult] = []
+        for item in entries[:limit]:
+            if not isinstance(item, dict):
+                continue
+            video_id = str(item.get("id") or "")
+            page_url = str(item.get("webpage_url") or item.get("url") or "")
+            title = str(item.get("title") or video_id or query)
+            uploader = str(item.get("uploader") or item.get("channel") or "")
+            uploader_url = str(item.get("uploader_url") or item.get("channel_url") or "")
+            normalized.append(
+                SearchResult(
+                    provider=self.name,
+                    provider_asset_id=video_id or slugify(title),
+                    title=title,
+                    page_url=page_url,
+                    download_url=page_url,
+                    preview_image_url=str(item.get("thumbnail") or "") or None,
+                    duration_seconds=_int_or_none(item.get("duration")),
+                    width=_int_or_none(item.get("width")),
+                    height=_int_or_none(item.get("height")),
+                    tags=_string_list(item.get("tags")),
+                    source_type="unknown-license",
+                    license_status="hold",
+                    license_basis="yt-dlp query expansion pool result; keep in exploration only until explicitly promoted.",
+                    attribution_required=True,
+                    attribution_text="Record uploader/channel and add attribution if the source requires it.",
+                    usage_notes="Query-searched yt-dlp results expand the candidate pool but do not auto-enter the production manifest.",
+                    uploader=uploader or None,
+                    uploader_url=uploader_url or None,
+                )
+            )
+        return normalized
 
     def inspect_url(self, url: str, source_types: list[str]) -> SearchResult:
         command = [self._binary, "--dump-single-json", "--no-warnings", url]
@@ -514,6 +609,154 @@ def score_result(query: str, result: SearchResult) -> float:
     return round((overlap / len(query_tokens)) + exact_bonus, 4)
 
 
+def candidate_payload(chapter: dict[str, Any], query: str, result: SearchResult) -> dict[str, Any]:
+    return {
+        "chapter_id": chapter["chapter_id"],
+        "shot_purpose": chapter["shot_intent"],
+        "query": query,
+        "match_score": score_result(query, result),
+        "provider": result.provider,
+        "provider_asset_id": result.provider_asset_id,
+        "title": result.title,
+        "page_url": result.page_url,
+        "download_url": result.download_url,
+        "preview_image_url": result.preview_image_url,
+        "duration_seconds": result.duration_seconds,
+        "width": result.width,
+        "height": result.height,
+        "tags": result.tags,
+        "source_type": result.source_type,
+        "license_status": result.license_status,
+        "license_basis": result.license_basis,
+        "attribution_required": result.attribution_required,
+        "attribution_text": result.attribution_text,
+        "usage_notes": result.usage_notes,
+        "fallback_query": chapter["fallback"] or query,
+        "uploader": result.uploader,
+        "uploader_url": result.uploader_url,
+    }
+
+
+def candidate_key(item: dict[str, Any]) -> str:
+    return f"{item['provider']}:{item['provider_asset_id']}"
+
+
+def is_production_eligible(item: dict[str, Any]) -> bool:
+    return item.get("match_score", 0) > 0 and item.get("license_status") == "approved"
+
+
+def provider_priority(name: str | None) -> int:
+    return PROVIDER_PRIORITY.get(str(name or "").strip(), 2)
+
+
+def diversify_ranked_candidates(
+    ranked: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0 or not ranked:
+        return []
+
+    provider_buckets: dict[str, list[dict[str, Any]]] = {}
+    for item in ranked:
+        provider_buckets.setdefault(str(item.get("provider") or "unknown"), []).append(item)
+
+    provider_order = sorted(
+        provider_buckets,
+        key=lambda name: (
+            provider_priority(name),
+            max(float(item.get("match_score", 0.0)) for item in provider_buckets[name]),
+            len(provider_buckets[name]),
+        ),
+        reverse=True,
+    )
+
+    diversified: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    while len(diversified) < limit:
+        progressed = False
+        for provider_name in provider_order:
+            bucket = provider_buckets.get(provider_name, [])
+            while bucket and candidate_key(bucket[0]) in seen_keys:
+                bucket.pop(0)
+            if not bucket:
+                continue
+            candidate = bucket.pop(0)
+            key = candidate_key(candidate)
+            if key in seen_keys:
+                continue
+            diversified.append(candidate)
+            seen_keys.add(key)
+            progressed = True
+            if len(diversified) >= limit:
+                break
+        if not progressed:
+            break
+
+    return diversified
+
+
+def error_payload(
+    *,
+    provider: str,
+    chapter_id: str,
+    stage: str,
+    target: str,
+    exc: Exception,
+    clip_id: str | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "provider": provider,
+        "chapter_id": chapter_id,
+        "stage": stage,
+        "target": target,
+        "error": str(exc),
+    }
+    if clip_id:
+        payload["clip_id"] = clip_id
+    return payload
+
+
+def choose_chapter_approved_candidates(
+    *,
+    clip_briefs: list[dict[str, Any]],
+    chapter_shortlists: dict[str, list[dict[str, Any]]],
+    approved_per_chapter: int,
+) -> dict[str, list[dict[str, Any]]]:
+    selected: dict[str, list[dict[str, Any]]] = {}
+    globally_used_candidate_keys: set[str] = set()
+
+    for chapter in clip_briefs:
+        chapter_id = chapter["chapter_id"]
+        shortlist = [item for item in chapter_shortlists.get(chapter_id, []) if item["match_score"] > 0]
+        chosen: list[dict[str, Any]] = []
+        chosen_keys: set[str] = set()
+
+        for item in shortlist:
+            key = candidate_key(item)
+            if key in globally_used_candidate_keys or key in chosen_keys:
+                continue
+            chosen.append(item)
+            chosen_keys.add(key)
+            globally_used_candidate_keys.add(key)
+            if len(chosen) >= approved_per_chapter:
+                break
+
+        if not chosen and shortlist:
+            for item in shortlist:
+                key = candidate_key(item)
+                if key in chosen_keys:
+                    continue
+                chosen.append(item)
+                chosen_keys.add(key)
+                if len(chosen) >= approved_per_chapter:
+                    break
+
+        selected[chapter_id] = chosen
+
+    return selected
+
+
 def build_query_sheet(
     *,
     content_id: str,
@@ -564,6 +807,47 @@ def download_with_ytdlp(binary: str, source_url: str, target_path: Path) -> None
     target_path.parent.mkdir(parents=True, exist_ok=True)
     command = [binary, "--no-progress", "--no-part", "-o", str(target_path), source_url]
     subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+def download_candidate_asset(
+    *,
+    item: dict[str, Any],
+    project_root: Path,
+    yt_dlp_bin: str,
+    base_dir_name: str,
+    index: int,
+    source_track: str,
+) -> dict[str, Any]:
+    extension = Path(urlparse(str(item["download_url"] or item["page_url"] or "")).path).suffix or ".mp4"
+    target_dir = project_root / "assets" / base_dir_name / str(item["chapter_id"])
+    target_dir.mkdir(parents=True, exist_ok=True)
+    clip_id = item.get("clip_id") or f"{item['provider']}-{item['provider_asset_id']}"
+    target_path = target_dir / f"{index:02d}-{slugify(str(item['provider']))}-{slugify(str(clip_id))}{extension}"
+    source_url = str(item.get("source_url") or item.get("page_url") or item.get("download_url") or "")
+    if item["provider"] == "yt-dlp":
+        download_with_ytdlp(yt_dlp_bin, source_url, target_path)
+        asset_bytes = target_path.read_bytes()
+    else:
+        asset_bytes = read_bytes_from_url(str(item["download_url"]))
+        target_path.write_bytes(asset_bytes)
+    return {
+        "clip_id": clip_id,
+        "chapter_id": item["chapter_id"],
+        "provider": item["provider"],
+        "source_url": source_url,
+        "download_url": item["download_url"],
+        "local_path": relative_to_project(target_path, project_root),
+        "file_size_bytes": len(asset_bytes),
+        "license_status": item["license_status"],
+        "license_basis": item["license_basis"],
+        "source_type": item.get("source_type") or "",
+        "source_track": source_track,
+        "attribution_required": item["attribution_required"],
+        "attribution_text": item["attribution_text"],
+        "usage_scope": item.get("usage_scope") or ["b-roll"],
+        "uploader": item.get("uploader") or "",
+        "uploader_url": item.get("uploader_url") or "",
+    }
 
 
 def compute_chapter_coverage_report(
@@ -650,6 +934,7 @@ def compute_chapter_coverage_report(
 
 def main() -> int:
     args = parse_args()
+    prefer_http_proxy_over_all_proxy()
     project_root = resolve_project_root(args)
     if not project_root.exists():
         raise FileNotFoundError(f"project root does not exist: {project_root}")
@@ -661,8 +946,10 @@ def main() -> int:
     providers = instantiate_providers(args.providers, yt_dlp_bin=args.yt_dlp_bin)
 
     provider_summary: dict[str, dict[str, int]] = {
-        provider.name: {"queries_attempted": 0, "results_found": 0} for provider in providers
+        provider.name: {"queries_attempted": 0, "results_found": 0, "query_failures": 0, "download_failures": 0}
+        for provider in providers
     }
+    provider_errors: list[dict[str, Any]] = []
     chapter_results: dict[str, dict[str, dict[str, Any]]] = {}
 
     for chapter in clip_briefs:
@@ -671,39 +958,27 @@ def main() -> int:
         chapter_queries = chapter["queries"]
         for query in chapter_queries:
             for provider in providers:
-                if provider.name == "yt-dlp":
-                    continue
                 provider_summary[provider.name]["queries_attempted"] += 1
-                results = provider.search(query, args.max_results_per_query)
+                try:
+                    results = provider.search(query, args.max_results_per_query)
+                except Exception as exc:
+                    provider_summary[provider.name]["query_failures"] += 1
+                    provider_errors.append(
+                        error_payload(
+                            provider=provider.name,
+                            chapter_id=chapter_id,
+                            stage="search",
+                            target=query,
+                            exc=exc,
+                        )
+                    )
+                    continue
                 provider_summary[provider.name]["results_found"] += len(results)
                 for result in results:
-                    candidate_key = f"{provider.name}:{result.provider_asset_id}"
-                    candidate = {
-                        "chapter_id": chapter_id,
-                        "shot_purpose": chapter["shot_intent"],
-                        "query": query,
-                        "match_score": score_result(query, result),
-                        "provider": result.provider,
-                        "provider_asset_id": result.provider_asset_id,
-                        "title": result.title,
-                        "page_url": result.page_url,
-                        "download_url": result.download_url,
-                        "preview_image_url": result.preview_image_url,
-                        "duration_seconds": result.duration_seconds,
-                        "width": result.width,
-                        "height": result.height,
-                        "tags": result.tags,
-                        "source_type": result.source_type,
-                        "license_status": result.license_status,
-                        "license_basis": result.license_basis,
-                        "attribution_required": result.attribution_required,
-                        "attribution_text": result.attribution_text,
-                        "usage_notes": result.usage_notes,
-                        "fallback_query": chapter["fallback"] or query,
-                    }
-                    existing = chapter_results[chapter_id].get(candidate_key)
+                    candidate = candidate_payload(chapter, query, result)
+                    existing = chapter_results[chapter_id].get(candidate_key(candidate))
                     if existing is None or candidate["match_score"] > existing["match_score"]:
-                        chapter_results[chapter_id][candidate_key] = candidate
+                        chapter_results[chapter_id][candidate_key(candidate)] = candidate
         direct_source_urls = chapter["direct_source_urls"]
         if direct_source_urls:
             for provider in providers:
@@ -712,45 +987,50 @@ def main() -> int:
                 yt_dlp_provider = provider
                 for source_url in direct_source_urls:
                     provider_summary[provider.name]["queries_attempted"] += 1
-                    result = yt_dlp_provider.inspect_url(source_url, chapter["source_types"])
+                    try:
+                        result = yt_dlp_provider.inspect_url(source_url, chapter["source_types"])
+                    except Exception as exc:
+                        provider_summary[provider.name]["query_failures"] += 1
+                        provider_errors.append(
+                            error_payload(
+                                provider=provider.name,
+                                chapter_id=chapter_id,
+                                stage="inspect_url",
+                                target=source_url,
+                                exc=exc,
+                            )
+                        )
+                        continue
                     provider_summary[provider.name]["results_found"] += 1
-                    candidate_key = f"{provider.name}:{result.provider_asset_id}"
-                    candidate = {
-                        "chapter_id": chapter_id,
-                        "shot_purpose": chapter["shot_intent"],
-                        "query": source_url,
-                        "match_score": 1.0,
-                        "provider": result.provider,
-                        "provider_asset_id": result.provider_asset_id,
-                        "title": result.title,
-                        "page_url": result.page_url,
-                        "download_url": result.download_url,
-                        "preview_image_url": result.preview_image_url,
-                        "duration_seconds": result.duration_seconds,
-                        "width": result.width,
-                        "height": result.height,
-                        "tags": result.tags,
-                        "source_type": result.source_type,
-                        "license_status": result.license_status,
-                        "license_basis": result.license_basis,
-                        "attribution_required": result.attribution_required,
-                        "attribution_text": result.attribution_text,
-                        "usage_notes": result.usage_notes,
-                        "fallback_query": chapter["fallback"] or source_url,
-                        "uploader": result.uploader,
-                        "uploader_url": result.uploader_url,
-                    }
-                    chapter_results[chapter_id][candidate_key] = candidate
+                    candidate = candidate_payload(chapter, source_url, result)
+                    candidate["match_score"] = 1.0
+                    chapter_results[chapter_id][candidate_key(candidate)] = candidate
 
+    chapter_exploration_shortlists: dict[str, list[dict[str, Any]]] = {}
     chapter_shortlists: dict[str, list[dict[str, Any]]] = {}
     for chapter in clip_briefs:
         chapter_id = chapter["chapter_id"]
         ranked = sorted(
             chapter_results.get(chapter_id, {}).values(),
-            key=lambda item: (item["match_score"], item["duration_seconds"] or 0),
+            key=lambda item: (item["match_score"], provider_priority(item.get("provider")), item["duration_seconds"] or 0),
             reverse=True,
         )
-        chapter_shortlists[chapter_id] = ranked[: args.max_shortlist_per_chapter]
+        chapter_exploration_shortlists[chapter_id] = diversify_ranked_candidates(
+            ranked,
+            limit=args.max_exploration_per_chapter,
+        )
+        production_ranked = [
+            item for item in ranked if is_production_eligible(item)
+        ]
+        chapter_shortlists[chapter_id] = diversify_ranked_candidates(
+            production_ranked,
+            limit=args.max_shortlist_per_chapter,
+        )
+    chapter_approved_candidates = choose_chapter_approved_candidates(
+        clip_briefs=clip_briefs,
+        chapter_shortlists=chapter_shortlists,
+        approved_per_chapter=args.approved_per_chapter,
+    )
 
     approved_manifest_entries: list[dict[str, Any]] = []
     hold_items: list[dict[str, Any]] = []
@@ -761,7 +1041,7 @@ def main() -> int:
     for chapter in clip_briefs:
         chapter_id = chapter["chapter_id"]
         shortlist = chapter_shortlists.get(chapter_id, [])
-        approved_for_chapter = [item for item in shortlist if item["match_score"] > 0][: args.approved_per_chapter]
+        approved_for_chapter = chapter_approved_candidates.get(chapter_id, [])
         if approved_for_chapter:
             recommended_clip_ids: list[str] = []
             for item in approved_for_chapter:
@@ -838,6 +1118,11 @@ def main() -> int:
         for chapter in clip_briefs
         for item in chapter_shortlists.get(chapter["chapter_id"], [])
     ]
+    exploration_results = [
+        item
+        for chapter in clip_briefs
+        for item in chapter_exploration_shortlists.get(chapter["chapter_id"], [])
+    ]
 
     generated_at = datetime.now(timezone.utc).isoformat()
     content_id = str(packet.get("content_id") or project_root.name)
@@ -868,44 +1153,56 @@ def main() -> int:
         "hold_items": hold_items,
         "assembly_suggestions": assembly_suggestions,
         "fallback_options": fallback_options,
+        "provider_errors": provider_errors,
     }
 
     ingest_assets: list[dict[str, Any]] = []
+    download_errors: list[dict[str, Any]] = []
     approved_to_download = approved_manifest_entries
     if args.download_limit > 0:
         approved_to_download = approved_to_download[: args.download_limit]
 
     if args.download_approved:
+        downloaded_clip_ids: set[str] = set()
         for index, item in enumerate(approved_to_download, start=1):
-            extension = Path(urlparse(item["download_url"]).path).suffix or ".mp4"
-            target_dir = project_root / "assets" / "external" / item["chapter_id"]
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target_path = target_dir / f"{index:02d}-{slugify(item['source_name'])}-{slugify(item['clip_id'])}{extension}"
-            if item["source_name"] == "yt-dlp":
-                download_with_ytdlp(args.yt_dlp_bin, item["source_url"], target_path)
-                asset_bytes = target_path.read_bytes()
-            else:
-                asset_bytes = read_bytes_from_url(item["download_url"])
-                target_path.write_bytes(asset_bytes)
-            ingest_record = {
-                "clip_id": item["clip_id"],
-                "chapter_id": item["chapter_id"],
-                "provider": item["source_name"],
-                "source_url": item["source_url"],
-                "download_url": item["download_url"],
-                "local_path": relative_to_project(target_path, project_root),
-                "file_size_bytes": len(asset_bytes),
-                "license_status": item["license_status"],
-                "license_basis": item["license_basis"],
-                "attribution_required": item["attribution_required"],
-                "attribution_text": item["attribution_text"],
-                "usage_scope": item["usage_scope"],
-                "uploader": item.get("uploader") or "",
-                "uploader_url": item.get("uploader_url") or "",
-            }
-            ingest_assets.append(ingest_record)
+            clip_id = str(item.get("clip_id") or "")
+            if clip_id in downloaded_clip_ids:
+                continue
+            try:
+                ingest_assets.append(
+                    download_candidate_asset(
+                        item={
+                            **item,
+                            "provider": item["source_name"],
+                            "source_url": item["source_url"],
+                        },
+                        project_root=project_root,
+                        yt_dlp_bin=args.yt_dlp_bin,
+                        base_dir_name="external",
+                        index=index,
+                        source_track="production",
+                    )
+                )
+                if clip_id:
+                    downloaded_clip_ids.add(clip_id)
+            except Exception as exc:
+                provider_name = str(item.get("source_name") or item.get("provider") or "unknown")
+                if provider_name in provider_summary:
+                    provider_summary[provider_name]["download_failures"] += 1
+                download_errors.append(
+                    error_payload(
+                        provider=provider_name,
+                        chapter_id=str(item.get("chapter_id") or ""),
+                        stage="download",
+                        target=str(item.get("download_url") or item.get("source_url") or ""),
+                        clip_id=str(item.get("clip_id") or ""),
+                        exc=exc,
+                    )
+                )
 
-        local_paths = {record["clip_id"]: record["local_path"] for record in ingest_assets}
+        local_paths: dict[str, str] = {}
+        for record in ingest_assets:
+            local_paths.setdefault(record["clip_id"], record["local_path"])
         source_manifest_payload = {
             **source_manifest_payload,
             "source_manifest": [
@@ -913,6 +1210,55 @@ def main() -> int:
                 for entry in approved_manifest_entries
             ],
         }
+
+    exploration_ingest_assets: list[dict[str, Any]] = []
+    exploration_download_errors: list[dict[str, Any]] = []
+    if args.download_exploration:
+        approved_keys = {item["clip_id"] for item in approved_manifest_entries}
+        exploration_to_download = [
+            {
+                **item,
+                "clip_id": f"{item['provider']}-{item['provider_asset_id']}",
+                "source_url": item["page_url"],
+                "usage_scope": ["b-roll"],
+            }
+            for item in exploration_results
+            if f"{item['provider']}-{item['provider_asset_id']}" not in approved_keys
+        ]
+        if args.exploration_download_limit > 0:
+            exploration_to_download = exploration_to_download[: args.exploration_download_limit]
+        downloaded_exploration_clip_ids: set[str] = set()
+        for index, item in enumerate(exploration_to_download, start=1):
+            clip_id = str(item.get("clip_id") or "")
+            if clip_id in downloaded_exploration_clip_ids:
+                continue
+            try:
+                exploration_ingest_assets.append(
+                    download_candidate_asset(
+                        item=item,
+                        project_root=project_root,
+                        yt_dlp_bin=args.yt_dlp_bin,
+                        base_dir_name="exploration",
+                        index=index,
+                        source_track="exploration",
+                    )
+                )
+                if clip_id:
+                    downloaded_exploration_clip_ids.add(clip_id)
+            except Exception as exc:
+                provider_name = str(item.get("provider") or "unknown")
+                if provider_name in provider_summary:
+                    provider_summary[provider_name]["download_failures"] += 1
+                exploration_download_errors.append(
+                    error_payload(
+                        provider=provider_name,
+                        chapter_id=str(item.get("chapter_id") or ""),
+                        stage="download_exploration",
+                        target=str(item.get("download_url") or item.get("source_url") or ""),
+                        clip_id=str(item.get("clip_id") or ""),
+                        exc=exc,
+                    )
+                )
 
     source_shortlist_payload = {
         "content_id": content_id,
@@ -925,6 +1271,21 @@ def main() -> int:
                 "shot_intent": chapter["shot_intent"],
                 "fallback": chapter["fallback"],
                 "results": chapter_shortlists.get(chapter["chapter_id"], []),
+            }
+            for chapter in clip_briefs
+        ],
+    }
+    exploration_shortlist_payload = {
+        "content_id": content_id,
+        "generated_at": generated_at,
+        "providers": [provider.name for provider in providers],
+        "results": exploration_results,
+        "chapters": [
+            {
+                "chapter_id": chapter["chapter_id"],
+                "shot_intent": chapter["shot_intent"],
+                "fallback": chapter["fallback"],
+                "results": chapter_exploration_shortlists.get(chapter["chapter_id"], []),
             }
             for chapter in clip_briefs
         ],
@@ -944,23 +1305,45 @@ def main() -> int:
         "download_limit": args.download_limit,
         "provider_summary": provider_summary,
         "ingested_assets": ingest_assets,
+        "download_errors": download_errors,
+    }
+    exploration_ingest_payload = {
+        "content_id": content_id,
+        "generated_at": generated_at,
+        "download_exploration": bool(args.download_exploration),
+        "download_limit": args.exploration_download_limit,
+        "provider_summary": provider_summary,
+        "ingested_assets": exploration_ingest_assets,
+        "download_errors": exploration_download_errors,
     }
 
     source_manifest_path = project_root / args.source_manifest_output
     source_shortlist_path = project_root / args.source_shortlist_output
     asset_ingest_path = project_root / args.asset_ingest_output
+    exploration_shortlist_path = project_root / args.exploration_shortlist_output
+    exploration_ingest_path = project_root / args.exploration_ingest_output
     coverage_report_path = project_root / args.coverage_report_output
     query_sheet_path = project_root / args.query_sheet_output
 
-    for output_path in (source_manifest_path, source_shortlist_path, asset_ingest_path, coverage_report_path, query_sheet_path):
+    for output_path in (
+        source_manifest_path,
+        source_shortlist_path,
+        asset_ingest_path,
+        exploration_shortlist_path,
+        exploration_ingest_path,
+        coverage_report_path,
+        query_sheet_path,
+    ):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     source_manifest_path.write_text(json.dumps(source_manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     source_shortlist_path.write_text(json.dumps(source_shortlist_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     asset_ingest_path.write_text(json.dumps(ingest_manifest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    exploration_shortlist_path.write_text(json.dumps(exploration_shortlist_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    exploration_ingest_path.write_text(json.dumps(exploration_ingest_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     coverage_report_path.write_text(json.dumps(coverage_report_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     query_sheet_path.write_text(
-        build_query_sheet(content_id=content_id, clip_briefs=clip_briefs, chapter_shortlists=chapter_shortlists),
+        build_query_sheet(content_id=content_id, clip_briefs=clip_briefs, chapter_shortlists=chapter_exploration_shortlists),
         encoding="utf-8",
     )
 
@@ -974,10 +1357,16 @@ def main() -> int:
                 "source_manifest": str(source_manifest_path),
                 "source_shortlist": str(source_shortlist_path),
                 "asset_ingest_manifest": str(asset_ingest_path),
+                "exploration_shortlist": str(exploration_shortlist_path),
+                "exploration_ingest_manifest": str(exploration_ingest_path),
                 "chapter_coverage_report": str(coverage_report_path),
                 "query_sheet": str(query_sheet_path),
                 "approved_count": len(source_manifest_payload["source_manifest"]),
                 "ingested_count": len(ingest_assets),
+                "exploration_ingested_count": len(exploration_ingest_assets),
+                "failed_download_count": len(download_errors),
+                "exploration_failed_download_count": len(exploration_download_errors),
+                "provider_error_count": len(provider_errors),
             },
             ensure_ascii=False,
         )

@@ -45,6 +45,16 @@ def parse_args() -> argparse.Namespace:
         help="Assembly QA report output path, relative to project root.",
     )
     parser.add_argument(
+        "--subtitle-quality-report-output",
+        default="review/subtitle-quality-report.json",
+        help="Subtitle quality report output path, relative to project root.",
+    )
+    parser.add_argument(
+        "--scene-assembly-report-output",
+        default="review/scene-assembly-report.json",
+        help="Scene assembly report output path, relative to project root.",
+    )
+    parser.add_argument(
         "--assembly-strategy",
         choices=["retime_existing_cut", "rebuild_timeline", "review_only"],
         help="Assembly strategy to record in the render plan. Defaults to content packet value or retime_existing_cut.",
@@ -106,6 +116,8 @@ def main() -> int:
             "render_manifest": str(render_manifest_path),
             "verification": str(verification_path),
             "qa_report": str(project_root / plan["qa_report_output"]),
+            "subtitle_quality_report": str(project_root / plan["subtitle_quality_report_output"]),
+            "scene_assembly_report": str(project_root / plan["scene_assembly_report_output"]),
             "final_cut": str(project_root / plan["output_video"]),
         }
     )

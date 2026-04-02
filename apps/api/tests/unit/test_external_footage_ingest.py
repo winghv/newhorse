@@ -59,6 +59,32 @@ def make_midlong_package(project_root: Path) -> None:
     )
 
 
+def make_dense_midlong_package(project_root: Path) -> None:
+    (project_root / "content").mkdir(parents=True, exist_ok=True)
+    (project_root / "sources").mkdir(parents=True, exist_ok=True)
+    write_json(
+        project_root / "content" / "bilibili-midform-video.json",
+        {
+            "content_id": project_root.name,
+            "platforms": ["bilibili"],
+            "deliverable_type": "midlong-video",
+            "clip_sourcing_brief": [
+                {
+                    "chapter_id": "ch1",
+                    "shot_intent": "需要更丰富的中视频 B-roll 候选池",
+                    "required_coverage_seconds": 12,
+                    "minimum_candidates": 3,
+                    "queries": [
+                        "office worker using ai on computer",
+                    ],
+                    "source_types": ["stock-library"],
+                    "fallback": "自录操作和图卡穿插",
+                }
+            ],
+        },
+    )
+
+
 def make_ytdlp_package(project_root: Path) -> None:
     (project_root / "content").mkdir(parents=True, exist_ok=True)
     (project_root / "sources").mkdir(parents=True, exist_ok=True)
@@ -86,7 +112,34 @@ def make_ytdlp_package(project_root: Path) -> None:
     )
 
 
-def build_mock_catalog(root: Path) -> None:
+def make_ytdlp_search_package(project_root: Path) -> None:
+    (project_root / "content").mkdir(parents=True, exist_ok=True)
+    (project_root / "sources").mkdir(parents=True, exist_ok=True)
+    write_json(
+        project_root / "content" / "bilibili-midform-video.json",
+        {
+            "content_id": project_root.name,
+            "platforms": ["bilibili"],
+            "deliverable_type": "midlong-video",
+            "clip_sourcing_brief": [
+                {
+                    "chapter_id": "ch1",
+                    "shot_intent": "找更丰富的键盘、屏幕和办公桌 B-roll",
+                    "required_coverage_seconds": 8,
+                    "minimum_candidates": 2,
+                    "queries": [
+                        "keyboard desk setup",
+                        "typing on laptop screen",
+                    ],
+                    "source_types": ["stock-library"],
+                    "fallback": "UI 录屏和字幕打点",
+                }
+            ],
+        },
+    )
+
+
+def build_mock_catalog(root: Path, *, extra_results: int = 0) -> None:
     videos = root / "videos"
     videos.mkdir(parents=True, exist_ok=True)
 
@@ -122,8 +175,123 @@ def build_mock_catalog(root: Path) -> None:
                     "tags": ["screen", "text"],
                 },
             ]
+            + [
+                {
+                    "id": f"mock-pexels-extra-{index + 1:03d}",
+                    "title": f"Office AI B-roll {index + 1}",
+                    "page_url": f"https://example.test/videos/mock-pexels-extra-{index + 1:03d}",
+                    "download_url": video_one.as_uri(),
+                    "preview_image_url": f"https://example.test/thumbs/mock-pexels-extra-{index + 1:03d}.jpg",
+                    "duration_seconds": 8 + index,
+                    "width": 1920,
+                    "height": 1080,
+                    "tags": ["office", "ai", "workflow", f"variant-{index + 1}"],
+                }
+                for index in range(extra_results)
+            ],
         },
     )
+
+
+def build_broken_catalog(root: Path) -> None:
+    videos = root / "videos"
+    videos.mkdir(parents=True, exist_ok=True)
+    good_video = videos / "good.mp4"
+    good_video.write_bytes(b"mock-good-video")
+    write_json(
+        root / "catalog.json",
+        {
+            "results": [
+                {
+                    "id": "good-001",
+                    "title": "Office worker using AI on computer",
+                    "page_url": "https://example.test/videos/good-001",
+                    "download_url": good_video.as_uri(),
+                    "preview_image_url": "https://example.test/thumbs/good-001.jpg",
+                    "duration_seconds": 8,
+                    "width": 1920,
+                    "height": 1080,
+                    "tags": ["office", "worker", "ai", "computer"],
+                },
+                {
+                    "id": "bad-001",
+                    "title": "Office AI broken download clip",
+                    "page_url": "https://example.test/videos/bad-001",
+                    "download_url": "file:///nonexistent/path/bad-001.mp4",
+                    "preview_image_url": "https://example.test/thumbs/bad-001.jpg",
+                    "duration_seconds": 7,
+                    "width": 1920,
+                    "height": 1080,
+                    "tags": ["office", "ai", "broken", "computer"],
+                },
+            ]
+        },
+    )
+
+
+def make_multi_chapter_overlap_package(project_root: Path) -> None:
+    (project_root / "content").mkdir(parents=True, exist_ok=True)
+    (project_root / "sources").mkdir(parents=True, exist_ok=True)
+    write_json(
+        project_root / "content" / "bilibili-midform-video.json",
+        {
+            "content_id": project_root.name,
+            "platforms": ["bilibili"],
+            "deliverable_type": "midlong-video",
+            "clip_sourcing_brief": [
+                {
+                    "chapter_id": "ch1",
+                    "shot_intent": "第一章需要 office ai b-roll",
+                    "required_coverage_seconds": 6,
+                    "minimum_candidates": 1,
+                    "queries": ["office worker ai computer"],
+                    "source_types": ["stock-library"],
+                    "fallback": "图卡 1",
+                },
+                {
+                    "chapter_id": "ch2",
+                    "shot_intent": "第二章需要 office ai b-roll",
+                    "required_coverage_seconds": 6,
+                    "minimum_candidates": 1,
+                    "queries": ["office worker ai computer"],
+                    "source_types": ["stock-library"],
+                    "fallback": "图卡 2",
+                },
+                {
+                    "chapter_id": "ch3",
+                    "shot_intent": "第三章需要 office ai b-roll",
+                    "required_coverage_seconds": 6,
+                    "minimum_candidates": 1,
+                    "queries": ["office worker ai computer"],
+                    "source_types": ["stock-library"],
+                    "fallback": "图卡 3",
+                },
+            ],
+        },
+    )
+
+
+def build_overlap_catalog(root: Path) -> None:
+    videos = root / "videos"
+    videos.mkdir(parents=True, exist_ok=True)
+    payload_results = []
+    for index in range(3):
+        video_path = videos / f"office-ai-{index + 1}.mp4"
+        video_path.write_bytes(f"office-ai-{index + 1}".encode("utf-8"))
+        payload_results.append(
+            {
+                "id": f"office-ai-{index + 1}",
+                "title": f"Office worker AI computer variant {index + 1}",
+                "page_url": f"https://example.test/videos/office-ai-{index + 1}",
+                "download_url": video_path.as_uri(),
+                "preview_image_url": f"https://example.test/thumbs/office-ai-{index + 1}.jpg",
+                "duration_seconds": 8 + index,
+                "width": 1920,
+                "height": 1080,
+                "tags": ["office", "worker", "ai", "computer", f"variant-{index + 1}"],
+            }
+        )
+    write_json(root / "catalog.json", {"results": payload_results})
 
 
 def build_mock_ytdlp_bin(root: Path) -> tuple[Path, Path]:
@@ -141,10 +309,37 @@ def build_mock_ytdlp_bin(root: Path) -> tuple[Path, Path]:
                 f"fixture = Path({str(fixture_path)!r})",
                 "args = sys.argv[1:]",
                 "if '--dump-single-json' in args:",
+                "    request = args[-1]",
+                "    if request.startswith('ytsearch'):",
+                "        print(json.dumps({",
+                "            'entries': [",
+                "                {",
+                "                    'id': 'search-001',",
+                "                    'title': 'Keyboard Desk Setup B-roll',",
+                "                    'webpage_url': 'https://video.example.test/watch/search-001',",
+                "                    'duration': 17,",
+                "                    'uploader': 'Creator Search A',",
+                "                    'uploader_url': 'https://video.example.test/channel/search-a',",
+                "                    'thumbnail': 'https://video.example.test/search-001.jpg',",
+                "                    'tags': ['keyboard', 'desk', 'setup']",
+                "                },",
+                "                {",
+                "                    'id': 'search-002',",
+                "                    'title': 'Typing on Laptop Screen',",
+                "                    'webpage_url': 'https://video.example.test/watch/search-002',",
+                "                    'duration': 13,",
+                "                    'uploader': 'Creator Search B',",
+                "                    'uploader_url': 'https://video.example.test/channel/search-b',",
+                "                    'thumbnail': 'https://video.example.test/search-002.jpg',",
+                "                    'tags': ['typing', 'laptop', 'screen']",
+                "                }",
+                "            ]",
+                "        }))",
+                "        raise SystemExit(0)",
                 "    print(json.dumps({",
                 "        'id': 'official-demo-001',",
                 "        'title': 'Official Product Demo',",
-                "        'webpage_url': args[-1],",
+                "        'webpage_url': request,",
                 "        'duration': 14,",
                 "        'width': 1920,",
                 "        'height': 1080,",
@@ -235,6 +430,46 @@ def test_run_external_footage_workflow_searches_and_ingests_assets(tmp_path: Pat
     assert "office worker using ai on computer" in query_sheet_path.read_text(encoding="utf-8")
 
 
+def test_run_external_footage_workflow_uses_wider_midvideo_defaults(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "licensed-footage-sourcing"
+        / "scripts"
+        / "run_external_footage_workflow.py"
+    )
+
+    project_root = tmp_path / "2026-03-28-bilibili-dense-footage"
+    make_dense_midlong_package(project_root)
+
+    mock_root = tmp_path / "dense-mock-provider"
+    build_mock_catalog(mock_root, extra_results=5)
+    completed = run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--providers",
+            "mock-stock",
+        ],
+        repo_root,
+        env={
+            "MOCK_STOCK_CATALOG_PATH": str(mock_root / "catalog.json"),
+        },
+    )
+
+    payload = json.loads(completed.stdout)
+    source_manifest = json.loads((project_root / "sources" / "source-manifest.json").read_text(encoding="utf-8"))
+    source_shortlist = json.loads((project_root / "sources" / "source-shortlist.json").read_text(encoding="utf-8"))
+
+    assert payload["provider_summary"]["mock-stock"]["results_found"] == 7
+    assert len(source_shortlist["chapters"][0]["results"]) == 6
+    assert len(source_manifest["source_manifest"]) == 6
+
+
 def test_run_external_footage_workflow_ingests_direct_ytdlp_sources(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[4]
     script_path = (
@@ -284,3 +519,146 @@ def test_run_external_footage_workflow_ingests_direct_ytdlp_sources(tmp_path: Pa
     local_path = project_root / ingest_manifest["ingested_assets"][0]["local_path"]
     assert local_path.exists()
     assert local_path.read_bytes() == b"mock-ytdlp-video"
+
+
+def test_run_external_footage_workflow_builds_exploration_pool_from_ytdlp_query_search(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "licensed-footage-sourcing"
+        / "scripts"
+        / "run_external_footage_workflow.py"
+    )
+
+    project_root = tmp_path / "2026-03-28-bilibili-ytdlp-search"
+    make_ytdlp_search_package(project_root)
+    mock_root = tmp_path / "mixed-mock-provider"
+    build_mock_catalog(mock_root)
+    ytdlp_bin, _ = build_mock_ytdlp_bin(tmp_path)
+
+    completed = run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--providers",
+            "mock-stock,yt-dlp",
+            "--download-approved",
+            "--download-exploration",
+            "--exploration-download-limit",
+            "2",
+            "--yt-dlp-bin",
+            str(ytdlp_bin),
+        ],
+        repo_root,
+        env={
+            "MOCK_STOCK_CATALOG_PATH": str(mock_root / "catalog.json"),
+        },
+    )
+
+    payload = json.loads(completed.stdout)
+    exploration_shortlist = json.loads((project_root / "sources" / "exploration-shortlist.json").read_text(encoding="utf-8"))
+    exploration_ingest = json.loads((project_root / "sources" / "exploration-ingest-manifest.json").read_text(encoding="utf-8"))
+    source_manifest = json.loads((project_root / "sources" / "source-manifest.json").read_text(encoding="utf-8"))
+
+    assert payload["provider_summary"]["yt-dlp"]["queries_attempted"] == 2
+    assert payload["provider_summary"]["yt-dlp"]["results_found"] == 4
+    assert payload["exploration_ingested_count"] == 2
+    assert any(item["provider"] == "yt-dlp" for item in exploration_shortlist["results"])
+    assert any(item["provider"] == "mock-stock" for item in exploration_shortlist["results"])
+    assert len(exploration_ingest["ingested_assets"]) == 2
+    assert source_manifest["license_summary"]["approved_count"] >= 1
+    assert (project_root / exploration_ingest["ingested_assets"][0]["local_path"]).exists()
+
+
+def test_run_external_footage_workflow_continues_when_downloads_fail(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "licensed-footage-sourcing"
+        / "scripts"
+        / "run_external_footage_workflow.py"
+    )
+
+    project_root = tmp_path / "2026-03-28-bilibili-resilient-downloads"
+    make_dense_midlong_package(project_root)
+
+    mock_root = tmp_path / "broken-mock-provider"
+    build_broken_catalog(mock_root)
+    completed = run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--providers",
+            "mock-stock",
+            "--download-approved",
+            "--download-limit",
+            "2",
+        ],
+        repo_root,
+        env={
+            "MOCK_STOCK_CATALOG_PATH": str(mock_root / "catalog.json"),
+        },
+    )
+
+    payload = json.loads(completed.stdout)
+    ingest_manifest = json.loads((project_root / "sources" / "asset-ingest-manifest.json").read_text(encoding="utf-8"))
+    source_manifest = json.loads((project_root / "sources" / "source-manifest.json").read_text(encoding="utf-8"))
+
+    assert payload["ingested_count"] == 1
+    assert payload["failed_download_count"] == 1
+    assert len(ingest_manifest["ingested_assets"]) == 1
+    assert len(ingest_manifest["download_errors"]) == 1
+    assert ingest_manifest["download_errors"][0]["clip_id"] == "mock-stock-bad-001"
+    assert any(entry["clip_id"] == "mock-stock-bad-001" for entry in source_manifest["source_manifest"])
+
+
+def test_run_external_footage_workflow_avoids_reusing_same_clip_across_chapters_when_alternatives_exist(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "licensed-footage-sourcing"
+        / "scripts"
+        / "run_external_footage_workflow.py"
+    )
+
+    project_root = tmp_path / "2026-03-28-bilibili-unique-assignment"
+    make_multi_chapter_overlap_package(project_root)
+
+    mock_root = tmp_path / "overlap-provider"
+    build_overlap_catalog(mock_root)
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--providers",
+            "mock-stock",
+            "--approved-per-chapter",
+            "1",
+            "--max-shortlist-per-chapter",
+            "3",
+            "--max-results-per-query",
+            "3",
+        ],
+        repo_root,
+        env={
+            "MOCK_STOCK_CATALOG_PATH": str(mock_root / "catalog.json"),
+        },
+    )
+
+    source_manifest = json.loads((project_root / "sources" / "source-manifest.json").read_text(encoding="utf-8"))
+    clip_ids = [entry["clip_id"] for entry in source_manifest["source_manifest"]]
+
+    assert len(clip_ids) == 3
+    assert len(set(clip_ids)) == 3

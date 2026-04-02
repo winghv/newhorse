@@ -19,7 +19,7 @@ version: 1.0.0
 - 已经有 `rough cut`，或者至少有可自动重建时间线的图卡 / proof pack / 获批素材
 - 已经有 `voiceover_audio` 或至少有可执行的旁白生成结果
 - 已经有 `subtitle_draft`、`subtitle_source`，或者至少有 `voiceover-segments.json`
-- 需要把后期步骤沉淀成 `render_plan`、`render_manifest`、`assembly_qa_report` 和 `render_verification`
+- 需要把后期步骤沉淀成 `audio-cue-sheet.json`、`render_plan`、`render_manifest`、`assembly_qa_report`、`subtitle-quality-report.json` 和 `render_verification`
 
 ## Workflow
 
@@ -28,6 +28,11 @@ version: 1.0.0
    - `voiceover_profile`
    - `voiceover_audio`
    - `subtitle_draft`
+   - `subtitle_style_pack`
+   - `audio_cue_sheet`
+   - `scene_manifest`
+   - `transition_plan`
+   - `emphasis_fx_plan`
    - `mix_notes`
    - `platform_package`
 2. 先决定装配策略，只允许以下之一：
@@ -50,6 +55,9 @@ version: 1.0.0
    - `assembly_strategy`
    - `retime`
    - `mix`
+   - `subtitle_style`
+   - `subtitle_quality_report_output`
+   - `scene_assembly_report_output`
    - 如果是 B 站中视频，优先把前 30 秒 hook BGM 和关键结构节点 SFX 也写进 `mix`
 8. 如果是“已有视频 + 新旁白 + 字幕”的装配场景，优先先落 plan，再执行本 skill 自带脚本：
 
@@ -87,7 +95,7 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
    - 输出时长是否与旁白目标基本一致
    - 字幕是否已烧录或已明确外挂策略
    - 字幕边界是否和真实口播停顿基本对齐，不能只检查“有字幕文件”
-   - `render_manifest`、`assembly_qa_report` 与 `render_verification` 是否已写出
+   - `render_manifest`、`assembly_qa_report`、`subtitle-quality-report.json`、`scene-assembly-report.json` 与 `render_verification` 是否已写出
 
 ## Output Contract
 
@@ -97,6 +105,8 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 - `render_plan`
 - `render_manifest`
 - `assembly_qa_report`
+- `subtitle_quality_report`
+- `scene_assembly_report`
 - `verification_output`
 - `final_cut_path`
 - `duration_alignment`
@@ -111,8 +121,12 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 - `scripts/build_render_plan.py`
   - 从内容包自动推导 `source_video`、`voiceover_audio`、`subtitles`、`output_video`
   - 缺字幕时自动调用 `build_subtitles_from_segments.py`
+  - 缺 `subtitle-style-pack.json` 时自动调用 `build_subtitle_style_pack.py`
+  - 缺 `audio-cue-sheet.json` 时自动调用 `build_audio_cue_sheet.py`
+  - 缺 `scene-manifest.json` 时自动调用 `build_scene_manifest.py`
+  - 缺 `transition-plan.json` 或 `emphasis-fx-plan.json` 时自动调用 `build_transition_plan.py`
   - `rebuild_timeline` 缺 rough cut 时自动调用 `build_visual_timeline.py`
-  - 对 `midlong-video` 自动补声音设计默认值：hook BGM、结构节点 SFX、sidechain ducking
+  - 对 `midlong-video` 自动补声音设计默认值：hook BGM、结构节点 SFX、sidechain ducking；如果已有 cue sheet，则缺什么补什么
   - 标准化写出 `render-plan.json`
   - 支持 `--content-id + --media-ops-root`，方便 specialist 在项目目录里调用
 - `scripts/run_render_workflow.py`
@@ -125,7 +139,9 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 - `scripts/render_narrated_cut.py`
   - 根据 `render-plan.json` 做最终 retime、混音和字幕烧录
   - 自动产出 `assembly-qa-report.json`
-  - 自动检查 freeze/static、duration alignment、字幕交付方式、subtitle alignment drift 和 sound design 落地状态
+  - 自动产出 `subtitle-quality-report.json`
+  - 自动产出 `scene-assembly-report.json`
+  - 自动检查 freeze/static、duration alignment、字幕交付方式、subtitle alignment drift、sound design 落地状态，以及 scene/transition/fx 计划是否齐全
 
 其中 `scripts/render_narrated_cut.py` 适用于这类确定性场景：
 
@@ -145,6 +161,8 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 - 需要旁白的视频没有真实旁白音轨
 - 最终字幕和真实口播不一致
 - 字幕和口播的边界偏移明显，但 `assembly-qa-report.json` 仍未修正到 `pass`
+- `subtitle-quality-report.json` 不是 `pass`
+- `scene-assembly-report.json` 不是 `pass`
 - `render_plan` 已要求 BGM / SFX，但最终成片没有对应 sound design 记录
 - 有 render 输出但没有 `render_manifest`
 - 时长严重失配，却没有说明为何仍可发布

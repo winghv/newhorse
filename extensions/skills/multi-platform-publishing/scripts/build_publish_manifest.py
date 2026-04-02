@@ -6,12 +6,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
 RELEASE_RECORD_RELATIVE_PATH = "publish/release-record.json"
+WORKFLOW_QUALITY_GATE_RELATIVE_PATH = "review/workflow-quality-gate.json"
+UPGRADE_STATUS_BOARD_RELATIVE_PATH = "review/upgrade-status-board.json"
+PRELIVE_QUALITY_SUMMARY_RELATIVE_PATH = "publish/prelive-quality-summary.json"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
@@ -59,6 +64,18 @@ def release_record_path(project_root: Path) -> Path:
     return (project_root / RELEASE_RECORD_RELATIVE_PATH).resolve()
 
 
+def workflow_quality_gate_path(project_root: Path) -> Path:
+    return (project_root / WORKFLOW_QUALITY_GATE_RELATIVE_PATH).resolve()
+
+
+def upgrade_status_board_path(project_root: Path) -> Path:
+    return (project_root / UPGRADE_STATUS_BOARD_RELATIVE_PATH).resolve()
+
+
+def prelive_quality_summary_path(project_root: Path) -> Path:
+    return (project_root / PRELIVE_QUALITY_SUMMARY_RELATIVE_PATH).resolve()
+
+
 def gate_status(payload: dict[str, Any]) -> str:
     for key in ("status", "overall_status", "decision", "review_status"):
         value = payload.get(key)
@@ -93,6 +110,10 @@ def default_media_ops_root() -> Path:
     return Path(__file__).resolve().parents[4] / "data" / "media-ops"
 
 
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
 def resolve_project_root(args: argparse.Namespace) -> Path:
     if args.project_root:
         return Path(args.project_root).resolve()
@@ -115,6 +136,56 @@ def find_content_packet(project_root: Path) -> Path | None:
             return matched[0]
 
     return candidates[0]
+
+
+def ensure_workflow_quality_gate(project_root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    gate_builder = (
+        repo_root()
+        / "extensions"
+        / "skills"
+        / "media-ops-orchestration"
+        / "scripts"
+        / "build_workflow_quality_gate.py"
+    )
+    if gate_builder.exists():
+        subprocess.run(
+            [
+                sys.executable,
+                str(gate_builder),
+                "--project-root",
+                str(project_root),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    return load_json(workflow_quality_gate_path(project_root)), load_json(upgrade_status_board_path(project_root))
+
+
+def write_prelive_quality_summary(
+    *,
+    project_root: Path,
+    content_id: str,
+    decision: str,
+    blocking_reasons: list[str],
+    workflow_quality_gate: dict[str, Any],
+    manifest_output_path: Path,
+    render_context: dict[str, Any],
+) -> Path:
+    summary_path = prelive_quality_summary_path(project_root)
+    payload = {
+        "content_id": content_id,
+        "decision": decision,
+        "blocking_reasons": blocking_reasons,
+        "workflow_quality_status": workflow_quality_gate.get("overall_status"),
+        "workflow_quality_dimensions": workflow_quality_gate.get("dimensions", {}),
+        "manifest_path": relative_to_root(manifest_output_path, project_root),
+        "render_context": render_context,
+        "generated_at": now_iso(),
+    }
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return summary_path
 
 
 def find_latest_publish_manifest(project_root: Path) -> Path | None:
@@ -406,6 +477,7 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
     previous_manifest_path = find_latest_publish_manifest(project_root)
     previous_manifest = load_json(previous_manifest_path)
     release_record = load_json(release_record_path(project_root))
+    workflow_quality_gate, upgrade_status_board = ensure_workflow_quality_gate(project_root)
     publish_metadata = content_packet.get("publish_metadata", {})
 
     platform_candidates = content_packet.get("platforms") or []
@@ -566,6 +638,9 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         blocking_reasons.append("bilibili_refresh_not_supported")
         notes.append("当前自动化只支持 Bilibili 新稿带封面上传，不支持对已提交稿件做原地刷新；继续 live 会有重复投稿风险。")
 
+    if workflow_quality_gate.get("overall_status") not in {None, "", "pass"}:
+        blocking_reasons.append("workflow_quality_gate_not_passed")
+
     if not blocking_reasons and publish_mode in {"immediate_live_publish", "scheduled_publish"}:
         decision = "ready_for_live_publish"
     elif blocking_reasons:
@@ -595,9 +670,29 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         "blocking_reasons": blocking_reasons,
         "render_context": render_context,
         "cover_state": cover_state,
+        "workflow_quality_gate": {
+            "path": WORKFLOW_QUALITY_GATE_RELATIVE_PATH,
+            "overall_status": workflow_quality_gate.get("overall_status"),
+            "blocking_dimensions": workflow_quality_gate.get("blocking_dimensions", []),
+            "revise_dimensions": workflow_quality_gate.get("revise_dimensions", []),
+        },
+        "upgrade_status_board": {
+            "path": UPGRADE_STATUS_BOARD_RELATIVE_PATH,
+            "overall_status": upgrade_status_board.get("overall_status"),
+        },
         "release_record_path": RELEASE_RECORD_RELATIVE_PATH,
         "notes": notes,
     }
+    summary_path = write_prelive_quality_summary(
+        project_root=project_root,
+        content_id=manifest["content_id"],
+        decision=decision,
+        blocking_reasons=blocking_reasons,
+        workflow_quality_gate=workflow_quality_gate,
+        manifest_output_path=output_path,
+        render_context=render_context,
+    )
+    manifest["prelive_quality_summary_path"] = relative_to_root(summary_path, project_root)
 
     record = build_release_record(
         project_root=project_root,

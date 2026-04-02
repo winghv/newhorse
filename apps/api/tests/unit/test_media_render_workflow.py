@@ -1,10 +1,12 @@
 """Tests for project-level media render workflow helpers."""
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from importlib.machinery import SourceFileLoader
 
@@ -300,7 +302,7 @@ def test_build_render_plan_adds_sound_design_defaults_for_midform(tmp_path: Path
     assert len(bgm_tracks) == 1
     assert bgm_tracks[0]["path"].endswith("remotion/public/bgm-techno.mp3")
     assert bgm_tracks[0]["start_seconds"] == 0.0
-    assert bgm_tracks[0]["end_seconds"] == 30.0
+    assert bgm_tracks[0]["end_seconds"] == 18.0
     assert bgm_tracks[0]["loop"] is True
     assert plan["mix"]["bg_sidechain_ducking"] is True
 
@@ -391,10 +393,14 @@ def test_run_render_workflow_builds_plan_and_final_cut(tmp_path: Path) -> None:
     assert summary["render_plan"].endswith("content/postproduction/render-plan.json")
     assert summary["final_cut"].endswith("content/final-cut/pilot-v2-narrated.mp4")
     assert summary["qa_report"].endswith("review/assembly-qa-report.json")
+    assert summary["subtitle_quality_report"].endswith("review/subtitle-quality-report.json")
+    assert summary["scene_assembly_report"].endswith("review/scene-assembly-report.json")
 
     assert (project_root / "content" / "postproduction" / "render-plan.json").exists()
     assert (project_root / "content" / "postproduction" / "render-manifest.json").exists()
     assert (project_root / "review" / "assembly-qa-report.json").exists()
+    assert (project_root / "review" / "subtitle-quality-report.json").exists()
+    assert (project_root / "review" / "scene-assembly-report.json").exists()
     assert (project_root / "review" / "render-verification-auto.md").exists()
     assert (project_root / "content" / "final-cut" / "pilot-v2-narrated.mp4").exists()
 
@@ -513,6 +519,1130 @@ def test_build_tts_handoff_segments_long_script_by_sentences() -> None:
     assert "第五句再补一个反转。" in "".join(segments)
 
 
+def test_build_voice_performance_plan_outputs_segment_directives(tmp_path: Path) -> None:
+    """Voice performance planner should turn narration into per-segment delivery directives."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "minimax-narration-postproduction"
+        / "scripts"
+        / "build_voice_performance_plan.py"
+    )
+
+    project_root = make_media_package(tmp_path / "voice-performance-package")
+    content_packet = {
+        "platforms": ["bilibili"],
+        "deliverable_type": "midlong-video",
+        "narration_script": "content/voiceover-script.md",
+        "subtitle_source_script": "content/voiceover-script.md",
+        "voiceover_assets": {
+            "target_profile": {
+                "voice_name": "Chinese (Mandarin)_Reliable_Executive",
+                "speed": 0.98,
+            }
+        },
+    }
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(content_packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "voiceover-script.md").write_text(
+        "\n".join(
+            [
+                "# 旁白",
+                "",
+                "为什么越会用 AI 的人，越容易做不出决定？",
+                "",
+                "举个具体例子。两个 offer，AI 在不同前提下会给出相反建议。",
+                "",
+                "最后给你四步框架：来源、反证、约束、试错。",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    output_path = project_root / "content" / "postproduction" / "voice-performance-plan.json"
+    assert output_path.exists()
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["voice_strategy_defaults"]["primary_voice_id"] == "Chinese (Mandarin)_Reliable_Executive"
+    assert payload["segments"]
+    assert all(segment["emotion"] for segment in payload["segments"])
+    assert all("pause_after_ms" in segment for segment in payload["segments"])
+    assert {segment["scene_purpose"] for segment in payload["segments"]} >= {"hook", "proof", "framework"}
+
+
+def test_build_tts_handoff_autogenerates_voice_performance_plan_and_enriched_segments(tmp_path: Path) -> None:
+    """TTS handoff should auto-generate and consume voice performance directives."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "minimax-narration-postproduction"
+        / "scripts"
+        / "build_tts_handoff.py"
+    )
+
+    project_root = make_media_package(tmp_path / "tts-handoff-package")
+    content_packet = {
+        "platforms": ["bilibili"],
+        "deliverable_type": "midlong-video",
+        "narration_script": "content/voiceover-script.md",
+        "subtitle_source_script": "content/voiceover-script.md",
+        "voiceover_assets": {
+            "target_profile": {
+                "voice_name": "Chinese (Mandarin)_Reliable_Executive",
+                "speed": 0.97,
+            }
+        },
+        "subtitle_package": {
+            "estimated_srt": "content/postproduction/subtitles.srt",
+        },
+    }
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(content_packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "voiceover-script.md").write_text(
+        "\n".join(
+            [
+                "什么都知道，就是不敢决定。",
+                "",
+                "举个例子，两个 offer 在不同前提下会得出相反建议。",
+                "",
+                "最后给你四步框架，把问题压回现实。",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    performance_path = project_root / "content" / "postproduction" / "voice-performance-plan.json"
+    segments_path = project_root / "content" / "postproduction" / "voiceover-segments.json"
+    profile_path = project_root / "content" / "postproduction" / "voiceover-profile.json"
+
+    assert performance_path.exists()
+    segments = json.loads(segments_path.read_text(encoding="utf-8"))
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    assert all(segment["emotion"] for segment in segments)
+    assert all("pause_after_ms" in segment for segment in segments)
+    assert all("intensity" in segment for segment in segments)
+    assert all("scene_purpose" in segment for segment in segments)
+    assert profile["render_targets"]["voice_performance_plan"] == "content/postproduction/voice-performance-plan.json"
+    assert profile["voice_strategy"]["default_emotion"]
+
+
+def test_build_subtitle_style_pack_creates_ass_style_and_highlights(tmp_path: Path) -> None:
+    """Subtitle style pack should expose burn-in style and emphasis rules."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "minimax-narration-postproduction"
+        / "scripts"
+        / "build_subtitle_style_pack.py"
+    )
+
+    project_root = make_media_package(tmp_path / "subtitle-style-package")
+    content_packet = {
+        "platforms": ["bilibili"],
+        "deliverable_type": "midlong-video",
+        "subtitle_package": {
+            "style": "简体中文，按意群断句，单行 14-20 字优先",
+            "notes": [
+                "关键句上屏：什么都知道，就是不敢决定",
+                "关键句上屏：四步框架",
+            ],
+        },
+    }
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(content_packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:01,000",
+                "第一，先打狠句。",
+                "",
+                "2",
+                "00:03:40,000 --> 00:03:41,000",
+                "第二，交付四步框架。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    output_path = project_root / "content" / "postproduction" / "subtitle-style-pack.json"
+    assert output_path.exists()
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["theme"] == "bilibili-midform-clean"
+    assert payload["burn_in_mode"] == "hardsub"
+    assert payload["highlight_rules"]["priority_phrases"] == ["什么都知道，就是不敢决定", "四步框架"]
+    assert "FontName=" in payload["ass_force_style"]
+
+
+def test_build_audio_cue_sheet_creates_chapter_beats_and_mix_rules(tmp_path: Path) -> None:
+    """Audio cue sheet should turn beat structure into reusable BGM/SFX instructions."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_audio_cue_sheet.py"
+    )
+
+    project_root = make_media_package(tmp_path / "audio-cue-package")
+    content_packet = {
+        "platforms": ["bilibili"],
+        "deliverable_type": "midlong-video",
+        "duration_target": "06:10-06:50",
+        "beat_sheet": [
+            {"time_range": "00:00-00:40", "beat": "hook", "purpose": "先打狠句。"},
+            {"time_range": "02:20-03:40", "beat": "proof", "purpose": "用相反答案案例证明。"},
+            {"time_range": "03:40-05:20", "beat": "framework", "purpose": "交付四步框架。"},
+        ],
+        "chapter_outline": [
+            {"chapter_id": "ch1", "title": "信息题和权重题"},
+            {"chapter_id": "ch2", "title": "四步框架"},
+        ],
+    }
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(content_packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:01,000",
+                "第一，先打狠句。",
+                "",
+                "2",
+                "00:03:40,000 --> 00:03:41,000",
+                "第二，交付四步框架。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    output_path = project_root / "content" / "postproduction" / "audio-cue-sheet.json"
+    assert output_path.exists()
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["bgm_tracks"]
+    assert len(payload["bgm_tracks"]) == 3
+    assert [track["role"] for track in payload["bgm_tracks"]] == ["hook_bed", "proof_bed", "framework_bed"]
+    assert payload["bgm_tracks"][0]["start_seconds"] == 0.0
+    assert payload["bgm_tracks"][0]["end_seconds"] == 18.0
+    assert payload["bgm_tracks"][1]["start_seconds"] == 140.0
+    assert payload["bgm_tracks"][1]["end_seconds"] == 220.0
+    assert payload["bgm_tracks"][2]["start_seconds"] == 220.0
+    assert payload["bgm_tracks"][2]["end_seconds"] == 320.0
+    assert payload["sfx_cues"]
+    assert payload["ducking_rules"]["bg_sidechain_ducking"] is True
+    assert payload["chapter_audio_beats"][0]["beat"] == "hook"
+    assert payload["chapter_audio_beats"][1]["start_seconds"] == 140.0
+    cue_labels = [cue["label"] for cue in payload["sfx_cues"]]
+    assert "typing_burst_hook_1" in cue_labels
+    assert "typing_burst_hook_2" in cue_labels
+    assert "typing_burst_hook_3" in cue_labels
+    assert "typing_burst_framework_1" in cue_labels
+    assert "typing_burst_framework_2" in cue_labels
+    assert "typing_burst_framework_3" in cue_labels
+    assert "ordinal_first" in cue_labels
+    assert "ordinal_second" in cue_labels
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
+def test_build_visual_timeline_places_opening_typewriter_on_cover_slot(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+
+    project_root = make_media_package(tmp_path / "opening-typewriter-package", assembly_strategy="rebuild_timeline")
+    voiceover_audio = project_root / "content" / "postproduction" / "minimax-output" / "voice.mp3"
+    subtitles = project_root / "content" / "postproduction" / "subtitles.srt"
+    graphics_dir = project_root / "assets" / "graphics"
+    graphics_dir.mkdir(parents=True, exist_ok=True)
+
+    make_audio(voiceover_audio, duration_seconds=2.2, frequency=880, workdir=repo_root)
+    make_color_png(project_root / "assets" / "bilibili-cover-draft.png", color="black", workdir=repo_root)
+    make_color_png(graphics_dir / "card-01-hook.png", color="red", workdir=repo_root)
+    subtitles.write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:02,200",
+                "平台不是更懂你，它更懂怎么把你困在像你",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(
+            {
+                "content_id": "pilot",
+                "platforms": ["bilibili"],
+                "deliverable_type": "midlong-video",
+                "chapter_outline": [
+                    {
+                        "chapter_id": "ch1",
+                        "title": "开场问题",
+                        "chapter_goal": "先给冲突和异常点",
+                        "summary": "平台不是更懂你。",
+                    }
+                ],
+                "hook_hypotheses": ["平台不是更懂你，它更懂怎么把你困在“像你”的东西里。"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "scene-asset-plan.json").write_text(
+        json.dumps(
+            {
+                "chapters": [
+                    {
+                        "chapter_id": "ch1",
+                        "proof_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                        "supporting_b_roll": [],
+                        "fallback_graphics": ["assets/graphics/card-01-hook.png"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction").mkdir(parents=True, exist_ok=True)
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "chapter_id": "ch1",
+                        "scene_title": "开场问题",
+                        "scene_goal": "先给冲突和异常点",
+                        "primary_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                        "supporting_assets": [],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps(
+            {
+                "scene_fx": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "effects": [
+                            {
+                                "type": "typewriter_quote",
+                                "text": "平台不是更懂你，它更懂怎么把你困在“像你”的东西里。",
+                                "anchor": "upper_left",
+                                "chars_per_second": 12,
+                                "start_offset_seconds": 0.0,
+                                "duration_seconds": 2.0,
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--voiceover-audio",
+            "content/postproduction/minimax-output/voice.mp3",
+            "--subtitles",
+            "content/postproduction/subtitles.srt",
+        ],
+        repo_root,
+    )
+
+    payload = json.loads((project_root / "content" / "postproduction" / "auto-base-cut-plan.json").read_text(encoding="utf-8"))
+    assert payload["sequence"][0]["target_chapter"] == "opening"
+    assert payload["sequence"][0]["typewriter_text"] == "平台不是更懂你，它更懂怎么把你困在“像你”的东西里。"
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
+def test_build_visual_timeline_prefers_generated_keyart_and_falls_back_to_scene_manifest_fx(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+
+    project_root = make_media_package(tmp_path / "generated-keyart-package", assembly_strategy="rebuild_timeline")
+    voiceover_audio = project_root / "content" / "postproduction" / "minimax-output" / "voice.mp3"
+    subtitles = project_root / "content" / "postproduction" / "subtitles.srt"
+    graphics_dir = project_root / "assets" / "graphics"
+    generated_dir = project_root / "assets" / "generated"
+    graphics_dir.mkdir(parents=True, exist_ok=True)
+    generated_dir.mkdir(parents=True, exist_ok=True)
+
+    make_audio(voiceover_audio, duration_seconds=8.8, frequency=880, workdir=repo_root)
+    make_color_png(project_root / "assets" / "bilibili-cover-draft.png", color="black", workdir=repo_root)
+    make_color_png(graphics_dir / "card-01-hook.png", color="red", workdir=repo_root)
+    make_color_png(generated_dir / "ch1-hero.png", color="green", workdir=repo_root)
+    subtitles.write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:02,200",
+                "平台不是更懂你。",
+                "",
+                "2",
+                "00:00:02,200 --> 00:00:04,400",
+                "它更懂怎么把你困在像你的东西里。",
+                "",
+                "3",
+                "00:00:04,400 --> 00:00:06,600",
+                "你越刷，越像在确认自己。",
+                "",
+                "4",
+                "00:00:06,600 --> 00:00:08,800",
+                "但你看到的样本却越来越窄。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(
+            {
+                "content_id": "pilot",
+                "platforms": ["bilibili"],
+                "deliverable_type": "midlong-video",
+                "chapter_outline": [
+                    {
+                        "chapter_id": "ch1",
+                        "title": "开场问题",
+                        "chapter_goal": "先给冲突和异常点",
+                        "summary": "平台不是更懂你。",
+                    }
+                ],
+                "hook_hypotheses": ["平台不是更懂你。"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "scene-asset-plan.json").write_text(
+        json.dumps(
+            {
+                "chapters": [
+                    {
+                        "chapter_id": "ch1",
+                        "proof_asset": {"path": "assets/generated/ch1-hero.png", "type": "generated-keyart"},
+                        "supporting_b_roll": [],
+                        "fallback_graphics": [
+                            "assets/generated/ch1-hero.png",
+                            "assets/graphics/card-01-hook.png",
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction").mkdir(parents=True, exist_ok=True)
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "chapter_id": "ch1",
+                        "scene_title": "开场问题",
+                        "scene_goal": "先给冲突和异常点",
+                        "primary_asset": {"path": "assets/generated/ch1-hero.png", "type": "generated-keyart"},
+                        "supporting_assets": [],
+                        "emphasis_fx": [
+                            {
+                                "type": "typewriter_quote",
+                                "text": "平台不是更懂你",
+                                "anchor": "upper_center",
+                                "chars_per_second": 8,
+                                "start_offset_seconds": 0.0,
+                                "duration_seconds": 2.2,
+                                "target_role": "keyart",
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps({"scene_fx": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--voiceover-audio",
+            "content/postproduction/minimax-output/voice.mp3",
+            "--subtitles",
+            "content/postproduction/subtitles.srt",
+        ],
+        repo_root,
+    )
+
+    payload = json.loads((project_root / "content" / "postproduction" / "auto-base-cut-plan.json").read_text(encoding="utf-8"))
+    typewriter_slots = [item for item in payload["sequence"] if item["typewriter_text"] == "平台不是更懂你"]
+    assert typewriter_slots
+    assert typewriter_slots[0]["asset_path"] in {"assets/generated/ch1-hero.png", "assets/bilibili-cover-draft.png"}
+    card_slots = [item for item in payload["sequence"] if item["asset_path"] == "assets/graphics/card-01-hook.png"]
+    assert not card_slots or all(item["motion_preset"] == "static_hold" for item in card_slots)
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
+def test_build_render_plan_autogenerates_design_artifacts_and_uses_them(tmp_path: Path) -> None:
+    """Render plan should auto-create and consume subtitle/audio design artifacts."""
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_render_plan.py"
+    )
+
+    project_root = make_media_package(tmp_path / "render-design-package")
+    source_video = project_root / "content" / "final-cut" / "pilot-v1.mp4"
+    voiceover_audio = project_root / "content" / "postproduction" / "minimax-output" / "voice.mp3"
+    subtitles = project_root / "content" / "postproduction" / "subtitles.srt"
+
+    content_packet = {
+        "platforms": ["bilibili"],
+        "deliverable_type": "midlong-video",
+        "duration_target": "06:10-06:50",
+        "subtitle_package": {
+            "style": "简体中文，按意群断句，单行 14-20 字优先",
+            "notes": ["关键句上屏：四步框架"],
+        },
+        "beat_sheet": [
+            {"time_range": "00:00-00:40", "beat": "hook", "purpose": "先打狠句。"},
+            {"time_range": "03:40-05:20", "beat": "framework", "purpose": "交付四步框架。"},
+        ],
+        "chapter_outline": [
+            {"chapter_id": "ch1", "title": "四步框架"},
+        ],
+    }
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(content_packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=30",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=330:sample_rate=48000",
+            "-t",
+            "4",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            str(source_video),
+        ],
+        repo_root,
+    )
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:sample_rate=48000",
+            "-t",
+            "4",
+            "-c:a",
+            "mp3",
+            str(voiceover_audio),
+        ],
+        repo_root,
+    )
+    subtitles.write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:01,500",
+                "什么都知道，就是不敢决定。",
+                "",
+                "2",
+                "00:00:01,500 --> 00:00:03,500",
+                "这时候四步框架才有用。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "audio-cue-sheet.json").write_text(
+        json.dumps({"bgm_tracks": [], "sfx_cues": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "chapter_id": "ch1",
+                        "scene_title": "四步框架",
+                        "scene_goal": "交付四步框架",
+                        "primary_asset": {"path": "assets/graphics/card-01.png", "type": "graphics-card"},
+                        "supporting_assets": [],
+                        "emphasis_fx": [{"type": "typewriter_quote", "text": "四步框架"}],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps({"scene_fx": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "transition-plan.json").write_text(
+        json.dumps({"transitions": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "auto-base-cut-plan.json").write_text(
+        json.dumps(
+            {
+                "sequence": [
+                    {
+                        "slot_index": 0,
+                        "slot_start": 0.0,
+                        "slot_end": 2.0,
+                        "asset_path": "assets/graphics/card-01.png",
+                        "typewriter_text": "开头狠句",
+                        "typewriter_start_offset_seconds": 0.0,
+                    },
+                    {
+                        "slot_index": 1,
+                        "slot_start": 2.3,
+                        "slot_end": 4.0,
+                        "asset_path": "assets/graphics/card-02.png",
+                        "typewriter_text": "四步框架",
+                        "typewriter_start_offset_seconds": 0.1,
+                    },
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    style_pack = json.loads((project_root / "content" / "postproduction" / "subtitle-style-pack.json").read_text(encoding="utf-8"))
+    cue_sheet = json.loads((project_root / "content" / "postproduction" / "audio-cue-sheet.json").read_text(encoding="utf-8"))
+    plan = json.loads((project_root / "content" / "postproduction" / "render-plan.json").read_text(encoding="utf-8"))
+    emphasis_plan = json.loads((project_root / "content" / "postproduction" / "emphasis-fx-plan.json").read_text(encoding="utf-8"))
+
+    assert plan["subtitle_style"] == style_pack["ass_force_style"]
+    assert plan["mix"]["bgm_tracks"] == cue_sheet["bgm_tracks"]
+    assert plan["mix"]["sfx_cues"][: len(cue_sheet["sfx_cues"])] == cue_sheet["sfx_cues"]
+    assert plan["context"]["subtitle_style_pack"] == "content/postproduction/subtitle-style-pack.json"
+    assert plan["context"]["audio_cue_sheet"] == "content/postproduction/audio-cue-sheet.json"
+    assert cue_sheet["bgm_tracks"]
+    assert cue_sheet["sfx_cues"]
+    assert emphasis_plan["scene_fx"]
+    assert any(cue["label"].startswith("typewriter_") for cue in plan["mix"]["sfx_cues"])
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
+def test_build_render_plan_rebuilds_stale_auto_base_cut_in_rebuild_timeline_mode(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_render_plan.py"
+    )
+
+    project_root = make_media_package(tmp_path / "stale-auto-base-cut-package", assembly_strategy="rebuild_timeline")
+    source_video = project_root / "content" / "final-cut" / "pilot-v1.mp4"
+    auto_base_cut = project_root / "content" / "postproduction" / "auto-base-cut.mp4"
+    voiceover_audio = project_root / "content" / "postproduction" / "minimax-output" / "voice.mp3"
+    subtitles = project_root / "content" / "postproduction" / "subtitles.srt"
+    graphics_dir = project_root / "assets" / "graphics"
+    graphics_dir.mkdir(parents=True, exist_ok=True)
+
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x240:rate=30",
+            "-t",
+            "4",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(source_video),
+        ],
+        repo_root,
+    )
+    run_command(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x240:rate=30",
+            "-t",
+            "4",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(auto_base_cut),
+        ],
+        repo_root,
+    )
+    make_audio(voiceover_audio, duration_seconds=4.0, frequency=880, workdir=repo_root)
+    make_color_png(project_root / "assets" / "bilibili-cover-draft.png", color="black", workdir=repo_root)
+    make_color_png(graphics_dir / "card-01-hook.png", color="red", workdir=repo_root)
+    subtitles.write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:02,000",
+                "平台不是更懂你。",
+                "",
+                "2",
+                "00:00:02,000 --> 00:00:04,000",
+                "它只是更会让你停下来看。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "scene-asset-plan.json").write_text(
+        json.dumps(
+            {
+                "chapters": [
+                    {
+                        "chapter_id": "ch1",
+                        "proof_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                        "supporting_b_roll": [],
+                        "fallback_graphics": ["assets/graphics/card-01-hook.png"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "auto-base-cut-plan.json").write_text(
+        json.dumps({"sequence": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    old_timestamp = time.time() - 30
+    os.utime(auto_base_cut, (old_timestamp, old_timestamp))
+    os.utime(project_root / "content" / "postproduction" / "auto-base-cut-plan.json", (old_timestamp, old_timestamp))
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "chapter_id": "ch1",
+                        "scene_title": "开场问题",
+                        "scene_goal": "先给冲突和异常点",
+                        "primary_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                        "supporting_assets": [],
+                        "emphasis_fx": [{"type": "typewriter_quote", "text": "平台不是更懂你"}],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps({"scene_fx": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "transition-plan.json").write_text(
+        json.dumps({"transitions": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "audio-cue-sheet.json").write_text(
+        json.dumps({"bgm_tracks": [], "sfx_cues": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    plan = json.loads((project_root / "content" / "postproduction" / "render-plan.json").read_text(encoding="utf-8"))
+    assert plan["source_video"] == "content/postproduction/auto-base-cut.mp4"
+
+
+def test_build_visual_timeline_filter_helpers_do_not_add_default_fades() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+    module = SourceFileLoader("build_visual_timeline_test", str(script_path)).load_module()
+
+    image_filter = module.image_filter(
+        asset_path="assets/graphics/card-01.png",
+        width=1920,
+        height=1080,
+        fps=30,
+        duration=4.0,
+        motion_preset="static_hold",
+        motion_zoom_ratio=1.0,
+        typewriter_text=None,
+        typewriter_anchor=None,
+        typewriter_chars_per_second=None,
+        typewriter_start_offset_seconds=None,
+        typewriter_duration_seconds=None,
+    )
+    video_filter = module.video_filter(
+        width=1920,
+        height=1080,
+        fps=30,
+        duration=4.0,
+        motion_preset="push_left",
+        motion_zoom_ratio=1.08,
+        typewriter_text=None,
+        typewriter_anchor=None,
+        typewriter_chars_per_second=None,
+        typewriter_start_offset_seconds=None,
+        typewriter_duration_seconds=None,
+    )
+
+    assert "fade=t=in" not in image_filter
+    assert "fade=t=out" not in image_filter
+    assert "fade=t=in" not in video_filter
+    assert "fade=t=out" not in video_filter
+
+
+def test_build_visual_timeline_penalizes_white_background_demo_clips() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+    module = SourceFileLoader("build_visual_timeline_penalty_test", str(script_path)).load_module()
+
+    white_penalty = module.low_value_video_penalty(
+        title="a black iphone with a white screen and a white background",
+        page_url="https://www.pexels.com/video/a-black-iphone-with-a-white-screen-and-a-white-background-5083551/",
+        tags=[],
+    )
+    neutral_penalty = module.low_value_video_penalty(
+        title="person reacting to content on smartphone",
+        page_url="https://www.pexels.com/video/person-reacting-to-content-on-smartphone/",
+        tags=["phone", "reaction"],
+    )
+
+    assert white_penalty <= -90
+    assert neutral_penalty == 0
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
+def test_build_visual_timeline_aligns_typewriter_to_matching_subtitle_slot(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+
+    project_root = make_media_package(tmp_path / "typewriter-alignment-package", assembly_strategy="rebuild_timeline")
+    voiceover_audio = project_root / "content" / "postproduction" / "minimax-output" / "voice.mp3"
+    subtitles = project_root / "content" / "postproduction" / "subtitles.srt"
+    graphics_dir = project_root / "assets" / "graphics"
+    generated_dir = project_root / "assets" / "generated"
+    graphics_dir.mkdir(parents=True, exist_ok=True)
+    generated_dir.mkdir(parents=True, exist_ok=True)
+
+    make_audio(voiceover_audio, duration_seconds=8.8, frequency=880, workdir=repo_root)
+    make_color_png(project_root / "assets" / "bilibili-cover-draft.png", color="black", workdir=repo_root)
+    make_color_png(graphics_dir / "card-01-hook.png", color="red", workdir=repo_root)
+    make_color_png(generated_dir / "ch1-hero.png", color="green", workdir=repo_root)
+    subtitles.write_text(
+        "\n".join(
+            [
+                "1",
+                "00:00:00,000 --> 00:00:02,000",
+                "先给背景。",
+                "",
+                "2",
+                "00:00:02,000 --> 00:00:04,200",
+                "继续铺垫。",
+                "",
+                "3",
+                "00:00:04,200 --> 00:00:06,400",
+                "你就会发现，平台没有在帮你逼近真相。",
+                "",
+                "4",
+                "00:00:06,400 --> 00:00:08,800",
+                "后面继续展开。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(
+            {
+                "content_id": "pilot",
+                "platforms": ["bilibili"],
+                "deliverable_type": "midlong-video",
+                "chapter_outline": [
+                    {
+                        "chapter_id": "ch1",
+                        "title": "开场问题",
+                        "chapter_goal": "先给冲突和异常点",
+                        "summary": "平台没有在帮你逼近真相。",
+                    }
+                ],
+                "hook_hypotheses": ["平台不是更懂你。"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "scene-asset-plan.json").write_text(
+        json.dumps(
+            {
+                "chapters": [
+                    {
+                        "chapter_id": "ch1",
+                        "proof_asset": {"path": "assets/generated/ch1-hero.png", "type": "generated-keyart"},
+                        "supporting_b_roll": [],
+                        "fallback_graphics": ["assets/generated/ch1-hero.png", "assets/graphics/card-01-hook.png"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction").mkdir(parents=True, exist_ok=True)
+    (project_root / "content" / "postproduction" / "scene-manifest.json").write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene-01-ch1",
+                        "chapter_id": "ch1",
+                        "scene_title": "开场问题",
+                        "scene_goal": "先给冲突和异常点",
+                        "primary_asset": {"path": "assets/generated/ch1-hero.png", "type": "generated-keyart"},
+                        "supporting_assets": [],
+                        "emphasis_fx": [
+                            {
+                                "type": "typewriter_quote",
+                                "text": "平台没有在帮你逼近真相",
+                                "anchor": "upper_center",
+                                "chars_per_second": 8,
+                                "start_offset_seconds": 0.0,
+                                "duration_seconds": 2.5,
+                                "target_role": "keyart",
+                            }
+                        ],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "emphasis-fx-plan.json").write_text(
+        json.dumps({"scene_fx": []}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--voiceover-audio",
+            "content/postproduction/minimax-output/voice.mp3",
+            "--subtitles",
+            "content/postproduction/subtitles.srt",
+        ],
+        repo_root,
+    )
+
+    payload = json.loads((project_root / "content" / "postproduction" / "auto-base-cut-plan.json").read_text(encoding="utf-8"))
+    typewriter_slots = [item for item in payload["sequence"] if item["typewriter_text"] == "平台没有在帮你逼近真相"]
+    assert typewriter_slots
+    slot = typewriter_slots[0]
+    assert slot["slot_start"] <= 4.2 <= slot["slot_end"]
+    assert slot["typewriter_start_offset_seconds"] > (4.2 - slot["slot_start"])
+
+
+def test_build_visual_timeline_prefers_chapter_markers_for_target_allocation(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_visual_timeline.py"
+    )
+    module = SourceFileLoader("build_visual_timeline_markers_test", str(script_path)).load_module()
+
+    project_root = make_media_package(tmp_path / "chapter-marker-package", assembly_strategy="rebuild_timeline")
+    (project_root / "content" / "bilibili-midform-video.json").write_text(
+        json.dumps(
+            {
+                "content_id": "pilot",
+                "platforms": ["bilibili"],
+                "deliverable_type": "midlong-video",
+                "chapter_outline": [
+                    {"chapter_id": "ch1", "title": "第一章"},
+                    {"chapter_id": "ch2", "title": "第二章"},
+                ],
+                "chapter_markers": [
+                    {"timecode": "00:00", "title": "开场"},
+                    {"timecode": "00:10", "title": "第一章"},
+                    {"timecode": "00:20", "title": "第二章"},
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    slots = [
+        {"start": 0.0, "end": 6.0, "duration": 6.0},
+        {"start": 10.0, "end": 15.0, "duration": 5.0},
+        {"start": 20.0, "end": 25.0, "duration": 5.0},
+    ]
+    targets = module.build_chapter_targets(
+        slots,
+        ["ch1", "ch2"],
+        [],
+        has_cover=True,
+        project_root=project_root,
+    )
+
+    assert targets == ["opening", "ch1", "ch2"]
+
+
 @pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
 def test_run_render_workflow_rebuilds_timeline_without_existing_source_video(tmp_path: Path) -> None:
     """The workflow runner can auto-build a base cut when rebuild_timeline has no rough cut input."""
@@ -627,3 +1757,8 @@ def test_run_render_workflow_rebuilds_timeline_without_existing_source_video(tmp
         )
     else:
         assert auto_base_payload["quality"]["metrics"]["video_slot_count"] >= 1
+    assert any(
+        item.get("motion_preset")
+        for item in auto_base_payload["sequence"]
+        if item["asset_type"] == "video"
+    )

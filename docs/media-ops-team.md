@@ -112,20 +112,38 @@
 视频不再只靠一个通用 `content-production` skill 直接出稿，而是按下面的逻辑路由：
 
 1. `content-production` 先判定这条内容是短视频还是中长视频，以及主投平台
-2. 如果是中长视频，优先用 `licensed-footage-sourcing` 规划网上合法可用片段，再进入素材策略
-3. `video-asset-planning` 先做素材策略和生成预算门禁
-4. 对解释型中长视频，先补 `cognitive punch gate`，再进入样音和后期
-5. 通用母稿由以下 skill 之一产出：
+2. 如果主投平台是 Bilibili 中视频，先在 `benchmark-analysis` 和 `angle-design` 阶段补齐增长结构 artifacts：
+   - `benchmarks/bilibili-hook-patterns.json`
+   - `angles/attention-structure-template.json`
+   - `angles/follow-conversion-hooks.json`
+3. 如果是中长视频，优先用 `licensed-footage-sourcing` 规划网上合法可用片段，再进入素材策略
+4. `video-asset-planning` 先做素材策略和生成预算门禁，并补齐：
+   - `assets/scene-asset-plan.json`
+   - `assets/visual-evidence-map.json`
+   - `assets/generation-budget.json`
+   - `assets/minimax-shot-plan.json`
+   - `assets/generation-ledger.json`
+   - `assets/visual-diversity-report.json`
+5. 对解释型中长视频，先补 `cognitive punch gate`，再进入样音和后期
+6. 通用母稿由以下 skill 之一产出：
    - `short-video-production`
    - `midlong-video-production`
-6. `minimax-narration-postproduction` 再把母稿补成可执行的旁白、字幕和混音后期包
-7. 如果最终交付物是小红书图文，直接走 `xiaohongshu-note-packaging`
-8. 视频场景的平台包装再交给以下 skill 之一：
+7. `minimax-narration-postproduction` 再把母稿补成可执行的旁白、字幕和混音后期包
+7.1. 对旁白驱动视频，默认还要补 `voice-performance-plan.json` 和 `subtitle-style-pack.json`
+8. 如果最终交付物是小红书图文，直接走 `xiaohongshu-note-packaging`
+9. 视频场景的平台包装再交给以下 skill 之一：
    - `xiaohongshu-short-video-packaging`
    - `douyin-short-video-packaging`
    - `kuaishou-short-video-packaging`
    - `bilibili-midform-video-packaging`
-9. `video-postproduction-assembly` 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果没有 rough cut 且策略是 `rebuild_timeline`，则自动用图卡、proof pack 和已获批 B-roll 拼出基础时间线，再写出 render manifest、assembly qa report 与验证记录
+10. 竞争审校阶段如果是 Bilibili 中视频，再补 `review/opening-scorecard.json`，专门检查前 `30` 秒 promise -> proof 闭环和结尾桥接
+11. `video-postproduction-assembly` 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果没有 rough cut 且策略是 `rebuild_timeline`，则自动用图卡、proof pack 和已获批 B-roll 拼出基础时间线，再写出 `audio-cue-sheet.json`、render manifest、assembly qa report、subtitle quality report 与验证记录
+11.1. 如果 `visual-diversity-report.json` 没过线，不要继续靠转场或配乐掩盖素材重复，先回到素材计划层补章级资产
+11.2. 对旁白驱动中视频，进入 render 前默认还要补 `scene-manifest.json`、`transition-plan.json` 和 `emphasis-fx-plan.json`；render 后要补 `scene-assembly-report.json`
+12. 发布前还要统一生成：
+   - `review/workflow-quality-gate.json`
+   - `review/upgrade-status-board.json`
+   - `publish/prelive-quality-summary.json`
 
 这样做的目的不是“多加几个 skill”，而是把平台原生差异落到可交接的最终产物里。
 

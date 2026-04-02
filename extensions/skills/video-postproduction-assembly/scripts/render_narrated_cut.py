@@ -57,6 +57,12 @@ def load_plan(plan_path: Path) -> dict[str, Any]:
     return json.loads(plan_path.read_text(encoding="utf-8"))
 
 
+def load_json(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def resolve_path(base_dir: Path, raw_path: str | None) -> Path | None:
     if not raw_path:
         return None
@@ -89,6 +95,10 @@ def procedural_sfx_duration(preset: str) -> float:
         return 0.32
     if preset == "whoosh_riser":
         return 0.65
+    if preset == "typing_burst":
+        return 0.42
+    if preset == "ordinal_tick":
+        return 0.16
     raise ValueError(f"Unsupported procedural SFX preset: {preset}")
 
 
@@ -110,9 +120,9 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             f"sine=frequency=110:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=700,lowpass=f=7000,volume=0.35,"
+                "[0:a]highpass=f=900,lowpass=f=7600,volume=0.7,"
                 "afade=t=out:st=0.12:d=0.20[noise];"
-                "[1:a]volume=0.45,afade=t=out:st=0.05:d=0.27[bass];"
+                "[1:a]volume=0.8,afade=t=out:st=0.05:d=0.27[bass];"
                 "[noise][bass]amix=inputs=2:normalize=0[aout]"
             ),
             "-map",
@@ -135,9 +145,64 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             f"sine=frequency=560:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=250,lowpass=f=4200,volume=0.28,"
+                "[0:a]highpass=f=300,lowpass=f=5200,volume=0.42,"
                 "afade=t=in:st=0:d=0.18,afade=t=out:st=0.36:d=0.29[noise];"
-                "[1:a]volume=0.08,afade=t=in:st=0:d=0.22,afade=t=out:st=0.38:d=0.27[tone];"
+                "[1:a]volume=0.18,afade=t=in:st=0:d=0.22,afade=t=out:st=0.38:d=0.27[tone];"
+                "[noise][tone]amix=inputs=2:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "typing_burst":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.08:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=3100:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1850:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=2200,lowpass=f=8200,volume=0.4,"
+                "afade=t=in:st=0:d=0.002,afade=t=out:st=0.055:d=0.05[noise];"
+                "[1:a]volume=0.42,afade=t=in:st=0:d=0.001,afade=t=out:st=0.035:d=0.035[tone_hi];"
+                "[2:a]volume=0.18,afade=t=in:st=0:d=0.001,afade=t=out:st=0.05:d=0.05[tone_lo];"
+                "[noise][tone_hi][tone_lo]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "ordinal_tick":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=pink:amplitude=0.09:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1460:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=1800,lowpass=f=6200,volume=0.48,"
+                "afade=t=in:st=0:d=0.004,afade=t=out:st=0.05:d=0.06[noise];"
+                "[1:a]volume=0.24,afade=t=in:st=0:d=0.003,afade=t=out:st=0.04:d=0.05[tone];"
                 "[noise][tone]amix=inputs=2:normalize=0[aout]"
             ),
             "-map",
@@ -245,7 +310,7 @@ def build_sound_bed(
     workspace_root: Path,
     output_video: Path,
     voiceover_duration: float,
-) -> tuple[Path | None, dict[str, Any]]:
+) -> tuple[Path | None, Path | None, dict[str, Any]]:
     mix = plan.get("mix", {})
     raw_bgm_tracks = list(mix.get("bgm_tracks", []))
     raw_sfx_cues = list(mix.get("sfx_cues", []))
@@ -263,7 +328,7 @@ def build_sound_bed(
         "command": None,
     }
     if not raw_bgm_tracks and not raw_sfx_cues:
-        return None, summary
+        return None, None, summary
 
     sound_design_dir = output_video.parent / ".render-temp" / "sound-design"
     sound_design_dir.mkdir(parents=True, exist_ok=True)
@@ -316,85 +381,86 @@ def build_sound_bed(
         3,
     )
 
-    sound_bed_path = sound_design_dir / "sound-bed.wav"
-    command: list[str] = ["ffmpeg", "-y"]
-    filters: list[str] = []
-    mixed_inputs: list[str] = []
-    input_index = 0
+    def render_stem(
+        *,
+        items: list[dict[str, Any]],
+        item_type: str,
+        output_path: Path,
+    ) -> tuple[Path | None, list[str] | None]:
+        if not items:
+            return None, None
+        command: list[str] = ["ffmpeg", "-y"]
+        filters: list[str] = []
+        mixed_inputs: list[str] = []
+        input_index = 0
 
-    for track_index, track in enumerate(bgm_tracks):
-        if track["loop"]:
-            command.extend(["-stream_loop", "-1"])
-        command.extend(["-i", str(track["path"])])
+        for item_index, item in enumerate(items):
+            if item_type == "bgm" and item["loop"]:
+                command.extend(["-stream_loop", "-1"])
+            command.extend(["-i", str(item["path"])])
 
-        chain = [
-            "asetpts=PTS-STARTPTS",
-            "aformat=sample_rates=48000:channel_layouts=stereo",
-            f"volume={track['gain_db']}dB",
-            f"atrim=duration={track['duration_seconds']:.3f}",
-        ]
-        if track["fade_in_seconds"] > 0:
-            chain.append(f"afade=t=in:st=0:d={min(track['fade_in_seconds'], track['duration_seconds']):.3f}")
-        if track["fade_out_seconds"] > 0:
-            fade_out_duration = min(track["fade_out_seconds"], track["duration_seconds"])
-            fade_out_start = max(track["duration_seconds"] - fade_out_duration, 0.0)
-            chain.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out_duration:.3f}")
-        delay_ms = int(round(track["start_seconds"] * 1000))
-        if delay_ms > 0:
-            chain.append(f"adelay={delay_ms}|{delay_ms}")
+            chain = [
+                "asetpts=PTS-STARTPTS",
+                "aformat=sample_rates=48000:channel_layouts=stereo",
+                f"volume={item['gain_db']}dB",
+            ]
+            if item_type == "bgm":
+                chain.append(f"atrim=duration={item['duration_seconds']:.3f}")
+                if item["fade_in_seconds"] > 0:
+                    chain.append(f"afade=t=in:st=0:d={min(item['fade_in_seconds'], item['duration_seconds']):.3f}")
+                if item["fade_out_seconds"] > 0:
+                    fade_out_duration = min(item["fade_out_seconds"], item["duration_seconds"])
+                    fade_out_start = max(item["duration_seconds"] - fade_out_duration, 0.0)
+                    chain.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out_duration:.3f}")
+            elif item["duration_seconds"] is not None:
+                chain.append(f"atrim=duration={item['duration_seconds']:.3f}")
 
-        label = f"bgm_{track_index}"
-        filters.append(f"[{input_index}:a]{','.join(chain)}[{label}]")
-        mixed_inputs.append(f"[{label}]")
-        input_index += 1
+            delay_ms = int(round(item["start_seconds"] * 1000))
+            if delay_ms > 0:
+                chain.append(f"adelay={delay_ms}|{delay_ms}")
 
-    for cue_index, cue in enumerate(sfx_cues):
-        command.extend(["-i", str(cue["path"])])
+            label = f"{item_type}_{item_index}"
+            filters.append(f"[{input_index}:a]{','.join(chain)}[{label}]")
+            mixed_inputs.append(f"[{label}]")
+            input_index += 1
 
-        chain = [
-            "asetpts=PTS-STARTPTS",
-            "aformat=sample_rates=48000:channel_layouts=stereo",
-            f"volume={cue['gain_db']}dB",
-        ]
-        if cue["duration_seconds"] is not None:
-            chain.append(f"atrim=duration={cue['duration_seconds']:.3f}")
-        delay_ms = int(round(cue["start_seconds"] * 1000))
-        if delay_ms > 0:
-            chain.append(f"adelay={delay_ms}|{delay_ms}")
+        if len(mixed_inputs) == 1:
+            filters.append(
+                f"{mixed_inputs[0]}volume={sound_bed_gain_db}dB,atrim=duration={voiceover_duration:.3f}[bed]"
+            )
+        else:
+            filters.append(
+                f"{''.join(mixed_inputs)}amix=inputs={len(mixed_inputs)}:duration=longest:normalize=0,"
+                f"volume={sound_bed_gain_db}dB,atrim=duration={voiceover_duration:.3f}[bed]"
+            )
 
-        label = f"sfx_{cue_index}"
-        filters.append(f"[{input_index}:a]{','.join(chain)}[{label}]")
-        mixed_inputs.append(f"[{label}]")
-        input_index += 1
-
-    if not mixed_inputs:
-        return None, summary
-
-    if len(mixed_inputs) == 1:
-        filters.append(
-            f"{mixed_inputs[0]}volume={sound_bed_gain_db}dB,atrim=duration={voiceover_duration:.3f}[bed]"
+        command.extend(
+            [
+                "-filter_complex",
+                ";".join(filters),
+                "-map",
+                "[bed]",
+                "-c:a",
+                "pcm_s16le",
+                str(output_path),
+            ]
         )
-    else:
-        filters.append(
-            f"{''.join(mixed_inputs)}amix=inputs={len(mixed_inputs)}:duration=longest:normalize=0,"
-            f"volume={sound_bed_gain_db}dB,atrim=duration={voiceover_duration:.3f}[bed]"
-        )
+        run_command(command)
+        return output_path, command
 
-    command.extend(
-        [
-            "-filter_complex",
-            ";".join(filters),
-            "-map",
-            "[bed]",
-            "-c:a",
-            "pcm_s16le",
-            str(sound_bed_path),
-        ]
-    )
-    run_command(command)
-    summary["sound_bed_applied"] = True
-    summary["command"] = command
-    return sound_bed_path, summary
+    bgm_bed_path = sound_design_dir / "bgm-bed.wav"
+    sfx_bed_path = sound_design_dir / "sfx-bed.wav"
+    bgm_stem_path, bgm_command = render_stem(items=bgm_tracks, item_type="bgm", output_path=bgm_bed_path)
+    sfx_stem_path, sfx_command = render_stem(items=sfx_cues, item_type="sfx", output_path=sfx_bed_path)
+
+    summary["sound_bed_applied"] = bgm_stem_path is not None or sfx_stem_path is not None
+    summary["bgm_stem_applied"] = bgm_stem_path is not None
+    summary["sfx_stem_applied"] = sfx_stem_path is not None
+    summary["command"] = {
+        "bgm": bgm_command,
+        "sfx": sfx_command,
+    }
+    return bgm_stem_path, sfx_stem_path, summary
 
 
 def video_stream_info(payload: dict[str, Any]) -> dict[str, Any]:
@@ -857,6 +923,114 @@ def build_qa_report(
     }
 
 
+def build_subtitle_quality_report(
+    *,
+    plan: dict[str, Any],
+    qa_report: dict[str, Any],
+    workspace_root: Path,
+    subtitles: Path | None,
+) -> dict[str, Any]:
+    subtitle_delivery = qa_report.get("checks", {}).get("subtitle_delivery", {})
+    subtitle_alignment = qa_report.get("checks", {}).get("subtitle_alignment", {})
+    style_pack_raw = plan.get("context", {}).get("subtitle_style_pack")
+    style_pack_path = resolve_path(workspace_root, style_pack_raw)
+    style_pack_present = bool(style_pack_path and style_pack_path.exists())
+    style_pack_required = bool(style_pack_raw)
+
+    status = "pass"
+    if subtitle_delivery.get("status") == "block" or subtitle_alignment.get("status") == "block":
+        status = "block"
+    elif subtitle_delivery.get("status") == "revise" or subtitle_alignment.get("status") == "revise" or (
+        style_pack_required and not style_pack_present
+    ):
+        status = "revise"
+
+    return {
+        "status": status,
+        "inputs": {
+            "subtitles": display_path(subtitles, workspace_root) if subtitles else None,
+            "subtitle_style_pack": display_path(style_pack_path, workspace_root) if style_pack_path else None,
+            "style": plan.get("subtitle_style"),
+        },
+        "checks": {
+            "subtitle_delivery": subtitle_delivery,
+            "subtitle_alignment": subtitle_alignment,
+            "style_pack_present": {
+                "status": "pass" if (style_pack_present or not style_pack_required) else "revise",
+                "present": style_pack_present,
+                "required": style_pack_required,
+            },
+        },
+    }
+
+
+def build_scene_assembly_report(
+    *,
+    plan: dict[str, Any],
+    workspace_root: Path,
+    qa_report: dict[str, Any],
+) -> dict[str, Any]:
+    context = plan.get("context", {}) if isinstance(plan.get("context"), dict) else {}
+    scene_manifest_path = resolve_path(workspace_root, context.get("scene_manifest"))
+    transition_plan_path = resolve_path(workspace_root, context.get("transition_plan"))
+    emphasis_fx_plan_path = resolve_path(workspace_root, context.get("emphasis_fx_plan"))
+    auto_base_plan_path = workspace_root / "content" / "postproduction" / "auto-base-cut-plan.json"
+
+    scene_manifest = load_json(scene_manifest_path)
+    transition_plan = load_json(transition_plan_path)
+    emphasis_fx_plan = load_json(emphasis_fx_plan_path)
+    auto_base_plan = load_json(auto_base_plan_path if auto_base_plan_path.exists() else None)
+
+    scene_count = len(scene_manifest.get("scenes", [])) if isinstance(scene_manifest.get("scenes"), list) else 0
+    transition_count = len(transition_plan.get("transitions", [])) if isinstance(transition_plan.get("transitions"), list) else 0
+    fx_scene_count = len(emphasis_fx_plan.get("scene_fx", [])) if isinstance(emphasis_fx_plan.get("scene_fx"), list) else 0
+    image_slot_ratio = auto_base_plan.get("quality", {}).get("metrics", {}).get("image_slot_ratio")
+    auto_base_quality_status = auto_base_plan.get("quality", {}).get("status")
+
+    status = "pass"
+    if scene_manifest_path and not scene_manifest_path.exists():
+        status = "revise"
+    if transition_plan_path and not transition_plan_path.exists():
+        status = "revise"
+    if emphasis_fx_plan_path and not emphasis_fx_plan_path.exists():
+        status = "revise"
+    if qa_report.get("status") == "block":
+        status = "block"
+    elif qa_report.get("status") == "revise" and status == "pass":
+        status = "revise"
+
+    return {
+        "status": status,
+        "inputs": {
+            "scene_manifest": display_path(scene_manifest_path, workspace_root) if scene_manifest_path else None,
+            "transition_plan": display_path(transition_plan_path, workspace_root) if transition_plan_path else None,
+            "emphasis_fx_plan": display_path(emphasis_fx_plan_path, workspace_root) if emphasis_fx_plan_path else None,
+            "auto_base_cut_plan": display_path(auto_base_plan_path, workspace_root) if auto_base_plan_path.exists() else None,
+        },
+        "metrics": {
+            "scene_count": scene_count,
+            "transition_count": transition_count,
+            "fx_scene_count": fx_scene_count,
+            "auto_base_quality_status": auto_base_quality_status,
+            "image_slot_ratio": image_slot_ratio,
+        },
+        "checks": {
+            "scene_manifest_present": {
+                "status": "pass" if (scene_manifest_path and scene_manifest_path.exists()) or scene_manifest_path is None else "revise",
+                "present": bool(scene_manifest_path and scene_manifest_path.exists()),
+            },
+            "transition_plan_present": {
+                "status": "pass" if (transition_plan_path and transition_plan_path.exists()) or transition_plan_path is None else "revise",
+                "present": bool(transition_plan_path and transition_plan_path.exists()),
+            },
+            "emphasis_fx_plan_present": {
+                "status": "pass" if (emphasis_fx_plan_path and emphasis_fx_plan_path.exists()) or emphasis_fx_plan_path is None else "revise",
+                "present": bool(emphasis_fx_plan_path and emphasis_fx_plan_path.exists()),
+            },
+        },
+    }
+
+
 def build_filter_complex(
     plan: dict[str, Any],
     subtitles: Path | None,
@@ -864,7 +1038,8 @@ def build_filter_complex(
     voiceover_duration: float,
     retain_original_audio: bool,
     source_has_audio: bool,
-    sound_bed_present: bool,
+    bgm_bed_present: bool,
+    sfx_bed_present: bool,
 ) -> tuple[str, float]:
     retime = plan.get("retime", {})
     retime_mode = retime.get("mode", "auto_match_voiceover")
@@ -931,16 +1106,28 @@ def build_filter_complex(
         filters.append(f"[0:a]{','.join(original_chain)}[bg_source]")
         background_labels.append("[bg_source]")
 
-    if sound_bed_present:
+    next_audio_input_index = 2
+    if bgm_bed_present:
         sound_bed_gain_db = float(mix.get("sound_bed_gain_db", DEFAULT_SOUND_BED_GAIN_DB))
-        bed_input_index = 2
         bed_chain = [
             "asetpts=PTS-STARTPTS",
             f"volume={sound_bed_gain_db}dB",
             f"atrim=duration={voiceover_duration:.3f}",
         ]
-        filters.append(f"[{bed_input_index}:a]{','.join(bed_chain)}[bg_bed]")
+        filters.append(f"[{next_audio_input_index}:a]{','.join(bed_chain)}[bg_bed]")
         background_labels.append("[bg_bed]")
+        next_audio_input_index += 1
+
+    sfx_mix_label: str | None = None
+    if sfx_bed_present:
+        sfx_stem_gain_db = float(mix.get("sfx_stem_gain_db", 4.5))
+        sfx_chain = [
+            "asetpts=PTS-STARTPTS",
+            f"volume={sfx_stem_gain_db}dB",
+            f"atrim=duration={voiceover_duration:.3f}",
+        ]
+        filters.append(f"[{next_audio_input_index}:a]{','.join(sfx_chain)}[sfx_bed]")
+        sfx_mix_label = "[sfx_bed]"
 
     if background_labels:
         bg_sidechain_ducking = bool(mix.get("bg_sidechain_ducking", False))
@@ -971,12 +1158,14 @@ def build_filter_complex(
             )
             background_mix_label = "[bg_duck]"
 
-        filters.append(
-            f"{background_mix_label}{voice_mix_label}"
-            "amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout]"
-        )
+        filters.append(f"{background_mix_label}{voice_mix_label}amix=inputs=2:duration=longest:normalize=0[program]")
     else:
-        filters.append("[voice_raw]alimiter=limit=0.95[aout]")
+        filters.append("[voice_raw]anull[program]")
+
+    if sfx_mix_label is not None:
+        filters.append(f"[program]{sfx_mix_label}amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.97[aout]")
+    else:
+        filters.append("[program]alimiter=limit=0.95[aout]")
 
     return ";".join(filters), video_pts_factor
 
@@ -1052,6 +1241,8 @@ def main() -> int:
     render_manifest_output = resolve_path(workspace_root, plan.get("render_manifest_output"))
     verification_output = resolve_path(workspace_root, plan.get("verification_output"))
     qa_report_output = resolve_path(workspace_root, plan.get("qa_report_output"))
+    subtitle_quality_report_output = resolve_path(workspace_root, plan.get("subtitle_quality_report_output"))
+    scene_assembly_report_output = resolve_path(workspace_root, plan.get("scene_assembly_report_output"))
     assembly_strategy = str(plan.get("assembly_strategy", "retime_existing_cut"))
 
     if source_video is None or voiceover_audio is None or output_video is None:
@@ -1061,6 +1252,8 @@ def main() -> int:
     ensure_parent(render_manifest_output)
     ensure_parent(verification_output)
     ensure_parent(qa_report_output)
+    ensure_parent(subtitle_quality_report_output)
+    ensure_parent(scene_assembly_report_output)
 
     source_duration = media_duration(source_video)
     voiceover_duration = media_duration(voiceover_audio)
@@ -1068,7 +1261,7 @@ def main() -> int:
 
     mix = plan.get("mix", {})
     retain_original_audio = bool(mix.get("retain_original_audio", True))
-    sound_bed_path, sound_design_summary = build_sound_bed(
+    bgm_bed_path, sfx_bed_path, sound_design_summary = build_sound_bed(
         plan=plan,
         workspace_root=workspace_root,
         output_video=output_video,
@@ -1082,7 +1275,8 @@ def main() -> int:
         voiceover_duration=voiceover_duration,
         retain_original_audio=retain_original_audio,
         source_has_audio=source_has_audio,
-        sound_bed_present=sound_bed_path is not None,
+        bgm_bed_present=bgm_bed_path is not None,
+        sfx_bed_present=sfx_bed_path is not None,
     )
 
     video_codec = plan.get("video_codec", "libx264")
@@ -1098,8 +1292,10 @@ def main() -> int:
         "-i",
         str(voiceover_audio),
     ]
-    if sound_bed_path is not None:
-        ffmpeg_command.extend(["-i", str(sound_bed_path)])
+    if bgm_bed_path is not None:
+        ffmpeg_command.extend(["-i", str(bgm_bed_path)])
+    if sfx_bed_path is not None:
+        ffmpeg_command.extend(["-i", str(sfx_bed_path)])
     ffmpeg_command.extend(
         [
             "-filter_complex",
@@ -1138,6 +1334,17 @@ def main() -> int:
         duration_alignment_error=duration_alignment_error,
         sound_design_summary=sound_design_summary,
     )
+    subtitle_quality_report = build_subtitle_quality_report(
+        plan=plan,
+        qa_report=qa_report,
+        workspace_root=workspace_root,
+        subtitles=subtitles,
+    )
+    scene_assembly_report = build_scene_assembly_report(
+        plan=plan,
+        workspace_root=workspace_root,
+        qa_report=qa_report,
+    )
 
     manifest = {
         "plan_path": str(plan_path),
@@ -1169,6 +1376,13 @@ def main() -> int:
         "subtitles": {
             "burned_in": subtitles is not None,
             "style": plan.get("subtitle_style"),
+            "quality_report": display_path(subtitle_quality_report_output, workspace_root)
+            if subtitle_quality_report_output
+            else None,
+        },
+        "scene_assembly": {
+            "status": scene_assembly_report["status"],
+            "report": display_path(scene_assembly_report_output, workspace_root) if scene_assembly_report_output else None,
         },
         "output": {
             "video": display_path(output_video, workspace_root),
@@ -1208,6 +1422,10 @@ def main() -> int:
         )
     if qa_report_output is not None:
         write_json(qa_report_output, qa_report)
+    if subtitle_quality_report_output is not None:
+        write_json(subtitle_quality_report_output, subtitle_quality_report)
+    if scene_assembly_report_output is not None:
+        write_json(scene_assembly_report_output, scene_assembly_report)
 
     return 0
 

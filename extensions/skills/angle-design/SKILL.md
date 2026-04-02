@@ -33,7 +33,22 @@ version: 1.0.0
    - `save_share_potential`
    - `series_potential`
 4. 选出主角度和备选角度。
-5. 输出制作 brief，包括钩子假设、证明路径、禁区和 CTA。
+5. 如果目标平台是 Bilibili 中视频，再把主角度补成发布前可执行的增长结构：
+   - `attention-structure-template.json`
+   - `follow-conversion-hooks.json`
+6. 输出制作 brief，包括钩子假设、证明路径、禁区和 CTA。
+
+## Workflow Runner
+
+```bash
+python3 extensions/skills/angle-design/scripts/build_attention_structure.py \
+  --project-root data/media-ops/<content-id>
+```
+
+这会产出：
+
+- `angles/attention-structure-template.json`
+- `angles/follow-conversion-hooks.json`
 
 ## Output Template
 
@@ -44,9 +59,12 @@ version: 1.0.0
 - `comment_prompt`
 - `cta`
 - `kill_reasons`
+- `attention_structure_template`
+- `follow_conversion_hooks`
 
 ## Quality Gate
 
 - 不要把“观点正确”误当成“作品有吸引力”
 - 至少保留一个主角度和一个备选角度
 - 如果没有足够证据支撑角度，明确降级或退回选题阶段
+- 对 Bilibili 中视频，没有前 `30` 秒结构和结尾桥接时，不算可执行 brief

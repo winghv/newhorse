@@ -14,8 +14,10 @@ version: 1.0.0
 
 - 可执行的 `narration_script`
 - 可直接送入 TTS 的 `tts_input`
+- `voice-performance-plan.json`
 - 与口播一致的 `subtitle_source`
 - `srt_draft`
+- `subtitle-style-pack.json`
 - `mix_notes`
 - `delivery_checklist`
 
@@ -70,17 +72,18 @@ version: 1.0.0
    - `tts_input`
    - `tts_segments`
    - `subtitle_source`
-6. 生成 `srt_draft` 时，先保证与口播文本一致，再处理断句和重点强调。
-7. 为剪辑阶段输出 `mix_notes`：
+6. 先补 `voice-performance-plan.json`，把每段口播的 `emotion`、`speed`、`pause_after_ms`、`intensity` 和 `scene_purpose` 结构化，而不是整条只有一个平铺 voice 设置。
+7. 生成 `srt_draft` 时，先保证与口播文本一致，再处理断句和重点强调；同时补 `subtitle-style-pack.json`，不要只剩基础 SRT。
+8. 为剪辑阶段输出 `mix_notes`：
    - BGM 什么时候进出
    - 哪些段落需要 ducking
    - 哪些证据镜头需要让位给口播
-8. 如果可以执行 MiniMax：
+9. 如果可以执行 MiniMax：
    - 在当前工作目录创建 `minimax-output/`
    - 使用官方 skill 生成 `voiceover.mp3`
    - 保留命令、模型、voice_id、输入文本版本
-9. 如果 final cut 要进入真实渲染，继续把结果交给 `video-postproduction-assembly`，产出 `render_plan`、`render_manifest` 和 verification 记录。
-10. 如果当前轮不能执行生成，也要留下后续一键执行所需参数。
+10. 如果 final cut 要进入真实渲染，继续把结果交给 `video-postproduction-assembly`，产出 `audio-cue-sheet.json`、`render_plan`、`render_manifest`、`subtitle-quality-report.json` 和 verification 记录。
+11. 如果当前轮不能执行生成，也要留下后续一键执行所需参数。
 
 ## Workflow Runner
 
@@ -93,9 +96,11 @@ python3 extensions/skills/minimax-narration-postproduction/scripts/build_tts_han
 
 这会产出：
 
+- `content/postproduction/voice-performance-plan.json`
 - `content/postproduction/voiceover-tts-input.txt`
 - `content/postproduction/voiceover-segments.json`
 - `content/postproduction/voiceover-profile.json`
+- `content/postproduction/subtitle-style-pack.json`
 
 如果环境变量已就绪，再用官方已安装 toolkit 生成音频：
 
@@ -113,10 +118,12 @@ bash /Users/mac/.codex/skills/minimax-multimodal-toolkit/scripts/tts/generate_vo
 - `generation_status`
 - `voice_strategy`
 - `voice_id_plan`
+- `voice_performance_plan`
 - `tts_input`
 - `tts_segments`
 - `subtitle_source`
 - `srt_draft`
+- `subtitle_style_pack`
 - `mix_notes`
 - `bgm_ducking_plan`
 - `render_handoff`
@@ -145,7 +152,9 @@ bash /Users/mac/.codex/skills/minimax-multimodal-toolkit/scripts/tts/generate_vo
 
 - 有配乐但没有旁白，且视频类型本应依赖讲解
 - 有旁白脚本但字幕与口播不一致
+- `voiceover-segments.json` 仍然是统一空 `emotion`、统一语速，没有分段表达计划
 - 只给了 TTS 命令，没有给字幕源和混音说明
+- 有字幕，但没有 `subtitle-style-pack.json` 或最终字幕质感方案
 - 使用了 MiniMax，但没有记录 voice_id、模型和输出文件位置
 - 解释型中长视频缺 `cognitive_punch_gate`，或 gate 还没通过
 

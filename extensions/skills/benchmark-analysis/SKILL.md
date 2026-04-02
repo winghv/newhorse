@@ -30,7 +30,21 @@ version: 1.0.0
    - 哪些模式反复有效
    - 哪些套路已经过饱和
    - 哪些空白位还没被占满
-5. 输出对标包，给选题和角度设计直接接手。
+5. 如果目标平台是 Bilibili 中视频，额外把开场、结构、证据和关注桥拆成结构化 `pattern pack`，不要只留一份读后感式文档。
+6. 输出对标包，给选题和角度设计直接接手。
+
+## Workflow Runner
+
+对 Bilibili 中视频，优先把 benchmark deck 整理成结构化模式包：
+
+```bash
+python3 extensions/skills/benchmark-analysis/scripts/build_bilibili_pattern_pack.py \
+  --project-root data/media-ops/<content-id>
+```
+
+这会产出：
+
+- `benchmarks/bilibili-hook-patterns.json`
 
 ## Output Template
 
@@ -42,12 +56,19 @@ version: 1.0.0
 - `proof_pattern`
 - `visual_pattern`
 - `engagement_driver`
+- `follow_conversion_bridge`
 - `saturation_risk`
 - `whitespace`
 - `reusable_play`
+- `bilibili_hook_patterns`
 
 ## Quality Gate
 
 - 观察必须来自真实样本，不要用想象代替拆解
 - 明确哪些结论是事实，哪些是推断
 - 结果必须能回答“下一条作品靠什么赢”
+- 对 Bilibili 中视频，至少要回答：
+  - 前 `30` 秒怎么留人
+  - 第一层证明怎么前置
+  - 收藏理由在哪里
+  - 结尾怎样把“看完”变成“愿意继续关注下一条”

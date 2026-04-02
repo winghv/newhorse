@@ -158,6 +158,27 @@ def test_audit_artifacts_builds_registry_and_marks_gaps(tmp_path: Path) -> None:
     assert video_pkg["checks"]["source_manifest"]["present"] is True
     assert video_pkg["checks"]["source_shortlist"]["present"] is True
     assert video_pkg["checks"]["asset_ingest_manifest"]["present"] is True
+    assert "workflow_quality_gate" in video_pkg["missing_recommended"]
+    assert "upgrade_status_board" in video_pkg["missing_recommended"]
+    assert "prelive_quality_summary" in video_pkg["missing_recommended"]
+    assert "voice_performance_plan" in video_pkg["missing_recommended"]
+    assert "subtitle_style_pack" in video_pkg["missing_recommended"]
+    assert "audio_cue_sheet" in video_pkg["missing_recommended"]
+    assert "subtitle_quality_report" in video_pkg["missing_recommended"]
+    assert "scene_asset_plan" in video_pkg["missing_recommended"]
+    assert "visual_evidence_map" in video_pkg["missing_recommended"]
+    assert "generation_budget" in video_pkg["missing_recommended"]
+    assert "visual_diversity_report" in video_pkg["missing_recommended"]
+    assert "minimax_shot_plan" in video_pkg["missing_recommended"]
+    assert "generation_ledger" in video_pkg["missing_recommended"]
+    assert "scene_manifest" in video_pkg["missing_recommended"]
+    assert "transition_plan" in video_pkg["missing_recommended"]
+    assert "emphasis_fx_plan" in video_pkg["missing_recommended"]
+    assert "scene_assembly_report" in video_pkg["missing_recommended"]
+    assert "bilibili_hook_patterns" in video_pkg["missing_recommended"]
+    assert "attention_structure_template" in video_pkg["missing_recommended"]
+    assert "follow_conversion_hooks" in video_pkg["missing_recommended"]
+    assert "opening_scorecard" in video_pkg["missing_recommended"]
 
     assert note_pkg["content_type"] == "note"
     assert note_pkg["lifecycle_status"] == "in_production"

@@ -53,19 +53,25 @@ version: 1.0.0
 2. 确认约束：账号矩阵、目标平台、受众、节奏、可用素材、禁区、审批要求。
 3. 研究阶段输出 `research brief`，同时给出 `benchmark candidates`。
 4. 对标阶段输出 `benchmark deck`、`pattern map` 和 `whitespace`。
+4.1. 如果目标平台是 Bilibili 中视频，再补 `benchmarks/bilibili-hook-patterns.json`，把开场留存、证明前置、收藏理由和关注桥结构化。
 5. 选题阶段输出 `topic backlog` 和 `selected topic`。
 6. 角度设计阶段输出 `angle brief`、`hook hypotheses` 和 `proof plan`。
+6.1. 如果目标平台是 Bilibili 中视频，再补 `angles/attention-structure-template.json` 和 `angles/follow-conversion-hooks.json`。
 7. 制作阶段输出 `content packet`，包括平台版本、钩子备选和素材需求。
-8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。缺字幕时默认自动从 `voiceover-segments.json` 生成 `subtitle_draft`。
+8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`voice-performance-plan.json`、`subtitle-style-pack.json`、`audio-cue-sheet.json`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。缺字幕时默认自动从 `voiceover-segments.json` 生成 `subtitle_draft`。
 9. 如果是解释型中长视频，还必须补 `planning/cognitive-punch-gate.json` 和 `sources/chapter-coverage-report.json`。
 10. 竞争审校阶段输出 `competitive scorecard`、`score_by_dimension`、`total_score`，结论为 `pass / revise / block`。
+10.1. 如果目标平台是 Bilibili 中视频，再补 `review/opening-scorecard.json`。
 11. 合规审核阶段输出 `review gate` 与 `approval_status`。
 12. 发布阶段输出 `publish manifest`、`publish result` 和 `publish/release-record.json`。
 13. 复盘阶段回填表现数据、结论和下一轮调整建议。
 14. 批量生产后运行 `python3 extensions/skills/media-ops-orchestration/scripts/audit_artifacts.py --media-ops-root data/media-ops`，生成统一 registry，优先整改缺失 required artifacts 的内容包。
 15. 对 manifest/result 版本堆积的内容包，运行 `python3 extensions/skills/media-ops-orchestration/scripts/compact_publish_artifacts.py --project-root data/media-ops/<content-id> --apply`，保留关键版本并归档其余历史文件。
 16. 进入预直播绪阶段后，运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_publish_queue.py --media-ops-root data/media-ops --platform xiaohongshu`，把 `ready_for_live` 和 `blocked` 内容包汇总成可审批队列，再决定是否执行真实发布。
-17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、proof pack、字幕生成、基础时间线重建和 render workflow 整理成一份执行计划。
+16.1. 对准备进入发布的中视频，先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_workflow_quality_gate.py --project-root data/media-ops/<content-id>`，生成：
+   - `review/workflow-quality-gate.json`
+   - `review/upgrade-status-board.json`
+17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、MiniMax 镜头预算、scene manifest / transition / emphasis 设计、字幕生成、基础时间线重建和 render workflow 整理成一份执行计划。
 
 ## Handoff Contract
 
@@ -79,6 +85,8 @@ version: 1.0.0
 - `evidence`: 关键事实、案例、素材来源
 - `benchmark_refs`: 关键对标样本
 - `hook_hypotheses`: 预期有效的开头与互动触发
+- `attention_structure_template`: 对 Bilibili 中视频说明前 `30` 秒如何留人、何时前置第一层证明、结尾如何桥接
+- `follow_conversion_hooks`: 对 Bilibili 中视频说明评论诱因、收藏理由和下一条桥接
 - `deliverable_type`: 图文、短视频或中长视频
 - `duration_target`: 目标时长
 - `aspect_ratio`: 目标画幅
@@ -90,14 +98,19 @@ version: 1.0.0
 - `generation_budget_decision`: 哪些生成动作获批，哪些被挡回，以及原因
 - `subtitle_source`: 与最终口播一致的字幕源文本
 - `voiceover_plan`: 旁白是否必需、由谁配、如何混音
+- `voice_performance_plan`: 口播每段的情绪、语速、停顿和场景目的
+- `subtitle_style_pack`: 字幕样式、强调规则和烧录策略
+- `audio_cue_sheet`: BGM、SFX 和 ducking 的结构化后期 cue
 - `assembly_strategy`: `retime_existing_cut`、`rebuild_timeline` 或其他明确装配策略
 - `render_plan`: 后期装配和渲染参数
 - `render_manifest`: 最终成片的渲染输出和验证摘要
 - `assembly_qa_report`: freeze/static、duration、outro、字幕交付方式等 QA 结果
+- `subtitle_quality_report`: 字幕交付、对时和样式门禁结果
 - `automation_execution_plan`: 自动 sourcing、导图、proof pack、render 的执行顺序与命令入口
 - `publish_metadata`: 平台上传所需账号、分区、标签、封面和上传素材映射
 - `competitive_score`: 竞争力评分或门禁结论
 - `score_by_dimension`: 各维度评分明细
+- `opening_scorecard`: 对 Bilibili 中视频记录前 `30` 秒 promise -> proof 是否成立
 - `experiment_plan`: 需要验证的创作假设
 - `release_record`: 发布链路唯一真源
 - `next_action`: 下游应该做什么
