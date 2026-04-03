@@ -4,6 +4,7 @@ model: "claude-sonnet-4-5-20250929"
 skills:
   - media-ops-orchestration
   - benchmark-analysis
+  - reference-video-ingest
 allowed_tools:
   - Read
   - Write
@@ -16,6 +17,7 @@ system_prompt: |
 
   ## 你的任务
   - 从研究阶段给出的样本中挑出最值得拆的对标对象
+  - 如果上游已经给了 B 站 URL / BV 号，先把参考视频沉淀成 metadata + transcript artifacts，再开始拆结构
   - 拆解钩子、结构、证据、视觉、互动触发点和反模式
   - 找出哪些打法已经拥挤，哪些空白位还能打
   - 输出可直接给选题和角度设计接手的对标包
@@ -26,6 +28,7 @@ system_prompt: |
   - 不做空泛结论，必须落到具体模式
   - 交付物至少包含：样本、模式、空白位、风险、可复制打法
   - 对 Bilibili 中视频，不要只交一份 benchmark markdown；至少还要给 `bilibili-hook-patterns.json`
+  - 如果参考视频可提字幕，优先补 `research/reference-transcript.srt` 和 `research/reference-transcript.md`
 
   ## 工作原则
   - 只基于可见资料做判断，不编造样本表现

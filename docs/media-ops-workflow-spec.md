@@ -25,6 +25,7 @@
 - `supervisor-led`
   - 由外部主控 Agent 或人工主控驱动团队
   - 团队仍需交付同样的 handoff artifacts
+  - 主控默认通过 specialist 推进阶段，而不是自己吞掉大部分执行工作
   - 适合新工作流打磨、品牌敏感内容和高预算内容
 
 推荐模板映射：
@@ -33,6 +34,53 @@
 - `supervisor-led` -> `media-ops-supervisor`
 
 无论哪种模式，评分卡、审核状态、发布门禁和渲染记录都不能省略。
+
+### Supervisor-Led Delegation Rules
+
+`supervisor-led` 的设计目标不是“主控自己完成全部内容”，而是“主控像导演和制片一样拆阶段、写 brief、做 gate、整合 specialist 结果”。
+
+默认要求：
+
+- `research / benchmark / topic / angle / production / competitive review / compliance / publish / retrospective` 都应通过 specialist 推进
+- 主控自己只负责：
+  - 确认阶段目标
+  - 压缩上下文
+  - 写清楚 stage brief
+  - 判断门禁是否满足
+  - 汇总 specialist 交付物并指出冲突
+  - 建议主控批准下一步
+- 主控默认不得直接产出完整研究简报、完整脚本、完整审校结论或完整发布执行结果
+- 只有 manifest 小补丁、状态摘要、产物汇总和轻量修正允许由主控直接完成
+
+推荐默认映射：
+
+- `research` -> `trend-researcher`
+- `benchmark analysis` -> `benchmark-analyst`
+- `topic selection` -> `topic-strategist`
+- `angle design` -> `angle-designer`
+- `production (video)` -> `video-production-director`
+- `production (note/copy)` -> `content-producer`
+- `competitive review` -> `competitive-reviewer`
+- `compliance gate` -> `compliance-reviewer`
+- `publish package / upload` -> `distribution-operator`
+- `retrospective` -> `performance-analyst`
+
+每次委派前都要先产出 stage brief，至少包含：
+
+- `stage`
+- `objective`
+- `inputs`
+- `constraints`
+- `required_artifacts`
+- `acceptance_criteria`
+- `operating_mode=supervisor-led`
+
+specialist 返回后，主控必须明确：
+
+- 产物是否齐全
+- 已满足的门禁
+- 未满足的门禁
+- 建议主控批准的下一步
 
 ## Stages
 
@@ -53,6 +101,11 @@
 - `evidence`
 - `risk notes`
 - `benchmark candidates`
+- 如果已经拿到可直接拆的参考视频 URL / BV 号，还要优先补：
+  - `research/reference-video-metadata.json`
+  - `research/reference-transcript.srt`
+  - `research/reference-transcript.md`
+  - `research/reference-transcript-source.json`
 - 如果平台包含小红书，还要输出 `search capture terms` 和 `comment question clusters`
 
 ### 2. Benchmark Analysis
@@ -192,6 +245,7 @@
 自动化优先规则：
 
 - `B-roll` 默认先走 `licensed-footage-sourcing` runner，不靠人工逐段找素材
+- 对标研究里如果已经拿到参考视频 URL / BV 号，默认先走 `reference-video-ingest`，优先沉淀现成字幕，不再靠手工反复回看摘抄
 - `licensed-footage-sourcing` 对中视频默认同时产出 production shortlist 和 exploration shortlist；后者用于放大 B-roll 候选池，不直接替代 production manifest
 - 图卡、封面和其他 SVG 资产默认先走确定性导出，不靠人工截图导图
 - 每章都要先结构化声明 `proof_asset`、`supporting_b_roll`、`fallback_graphics` 和 `max_repeat_uses`
@@ -339,7 +393,12 @@
 每个阶段最少交付这些字段：
 
 - `objective`: 这条内容要完成什么目标
+- `stage`: 当前阶段名称
 - `operating_mode`: `autonomous-team` 或 `supervisor-led`
+- `inputs`: 当前阶段收到的关键输入、上游 artifact 和必要上下文
+- `constraints`: 预算、品牌、法务、时长、素材和审批边界
+- `required_artifacts`: 当前阶段必须交付的结构化产物
+- `acceptance_criteria`: 当前阶段算过线的判断标准
 - `audience`: 面向谁
 - `platforms`: 投放平台
 - `core_angle`: 核心观点或切入角度

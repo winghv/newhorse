@@ -25,7 +25,7 @@ version: 1.0.0
 推荐先定义运行模式：
 
 - `autonomous-team`: 由 Butler 负责完整调度，团队按门禁自动推进
-- `supervisor-led`: 由外部主控 Agent 或人类主控阶段推进，但团队仍按同一套契约输出
+- `supervisor-led`: 由外部主控 Agent 或人类主控阶段推进，但团队仍按同一套契约输出，默认通过 specialist 推动阶段执行
 
 如果 `制作` 的产物是视频，再拆成：
 
@@ -73,12 +73,64 @@ version: 1.0.0
    - `review/upgrade-status-board.json`
 17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、MiniMax 镜头预算、scene manifest / transition / emphasis 设计、字幕生成、基础时间线重建和 render workflow 整理成一份执行计划。
 
+## Supervisor-Led Delegation Contract
+
+`supervisor-led` 不是“主控自己把研究、写稿、审校都做完”，而是“主控像导演和制片一样调度 specialist，并做 gate 与整合”。
+
+默认规则：
+
+- `research / benchmark / topic / angle / production / competitive review / compliance / publish / retrospective` 都优先通过 specialist 推进
+- 主控自己只负责：
+  - 定义阶段目标
+  - 压缩上下文
+  - 编写 stage brief
+  - 判断门禁
+  - 汇总 specialist 结果
+  - 建议是否批准下一步
+- 主控默认不得直接产出完整研究简报、完整脚本、完整审校结论或完整发布执行结果
+- 只有状态摘要、manifest 小补丁、产物汇总和极小幅修正允许由主控直接完成
+
+推荐映射：
+
+- `research` -> `trend-researcher`
+- `benchmark analysis` -> `benchmark-analyst`
+- `topic selection` -> `topic-strategist`
+- `angle design` -> `angle-designer`
+- `production (video)` -> `video-production-director`
+- `production (note/copy)` -> `content-producer`
+- `competitive review` -> `competitive-reviewer`
+- `compliance gate` -> `compliance-reviewer`
+- `publish package / upload` -> `distribution-operator`
+- `retrospective` -> `performance-analyst`
+
+每次委派前，stage brief 至少要包含：
+
+- `stage`
+- `objective`
+- `inputs`
+- `constraints`
+- `required_artifacts`
+- `acceptance_criteria`
+- `operating_mode=supervisor-led`
+
+每次 specialist 返回后，主控至少要明确：
+
+- 产物是否齐全
+- 已满足的门禁
+- 未满足的门禁
+- 建议主控批准的下一步
+
 ## Handoff Contract
 
 每个阶段最少交付这些字段：
 
 - `objective`: 这条内容要完成什么目标
+- `stage`: 当前阶段名称
 - `operating_mode`: `autonomous-team` 或 `supervisor-led`
+- `inputs`: 当前阶段收到的关键输入、上游 artifact 和必要上下文
+- `constraints`: 预算、品牌、法务、时长、素材和审批边界
+- `required_artifacts`: 当前阶段必须交付的结构化产物
+- `acceptance_criteria`: 当前阶段算过线的判断标准
 - `audience`: 面向谁
 - `platforms`: 投放平台
 - `core_angle`: 核心观点或切入角度

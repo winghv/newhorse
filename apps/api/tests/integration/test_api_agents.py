@@ -123,8 +123,12 @@ class TestAgentTemplates:
         resp = client.get("/api/agents/templates/benchmark-analyst")
         assert resp.status_code == 200
 
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "reference-video-ingest" in skill_ids
+
         prompt = resp.json()["config"]["system_prompt"]
         assert "bilibili-hook-patterns.json" in prompt
+        assert "reference-transcript.srt" in prompt
         assert "开场留存" in prompt
         assert "关注转化" in prompt
 
@@ -212,6 +216,12 @@ class TestAgentTemplates:
         assert config["preferred_cli"] == "butler"
         assert "media-ops-orchestration" in set(config["skills"])
         assert "supervisor-led" in config["system_prompt"]
+        assert "delegate_task" in config["system_prompt"]
+        assert "stage brief" in config["system_prompt"]
+        assert "required_artifacts" in config["system_prompt"]
+        assert "acceptance_criteria" in config["system_prompt"]
+        assert "默认不得直接产出完整脚本" in config["system_prompt"]
+        assert "导演和制片" in config["system_prompt"]
 
     def test_distribution_operator_prefers_render_manifest_publish_bundle(self, client):
         """Distribution operator should resolve publish assets from render manifests before upload."""

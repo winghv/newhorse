@@ -47,6 +47,7 @@
 
 - `content-research`
 - `benchmark-analysis`
+- `reference-video-ingest`
 - `topic-selection`
 - `angle-design`
 - `content-production`
@@ -82,6 +83,7 @@
 2. 输入你的运营目标，例如平台、账号、受众、节奏、现有素材
 3. 如果目标平台包含小红书，先让 Butler 产出账号定位、内容支柱、图文/短视频配比和评论区运营简报
 4. Butler 会按阶段调度 specialist，并在项目目录里逐步沉淀研究、对标、角度、内容、审核、发布和复盘产物
+4.1. 如果已经拿到可直接拆的参考视频 URL / BV 号，先运行 `python3 extensions/skills/reference-video-ingest/scripts/ingest_reference_video.py --project-root data/media-ops/<content-id> --source-url <video-url>`，把 transcript artifacts 沉淀到 `research/`
 5. 如果你已经配置了上传环境与账号状态，发布阶段会优先调用现有 upload skills
 6. 如果中长视频需要自动找外部素材并把获批片段沉淀到生产链，运行 `/media-source-footage data/media-ops/<content-id> --download-approved`
 7. 如果项目里已有图卡、封面或其它 SVG 资产，先运行 `python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py --project-root data/media-ops/<content-id> --include-root-assets`，统一导出 PNG，而不是人工逐张处理
@@ -116,6 +118,7 @@
    - `benchmarks/bilibili-hook-patterns.json`
    - `angles/attention-structure-template.json`
    - `angles/follow-conversion-hooks.json`
+2.1. 如果 benchmark 阶段已经拿到参考视频 URL / BV 号，优先补 `research/reference-video-metadata.json`、`research/reference-transcript.srt` 和 `research/reference-transcript.md`，再做模式拆解
 3. 如果是中长视频，优先用 `licensed-footage-sourcing` 规划网上合法可用片段，再进入素材策略
 4. `video-asset-planning` 先做素材策略和生成预算门禁，并补齐：
    - `assets/scene-asset-plan.json`
@@ -166,13 +169,30 @@
   - 只要没有满足审批、账号、素材等门禁，就停在 dry-run 或待审状态
 - `supervisor-led`
   - 由外部主控 Agent 或人工主控推进阶段
-  - 主控可以直接调用 `media-ops-butler` 或单独调度 `video-production-director`
+  - 主控默认通过 specialist 推进阶段，不自己吞掉研究、写稿、审校和发布执行
+  - 主控可以直接调用 `media-ops-butler`，也可以按阶段单独调度 specialist
   - 适合在工作流还在打磨、品牌要求高、或需要更强质量把关时使用
 
 建议两者都做：
 
 - 自治模式负责稳定批量生产
 - 主控模式负责打磨新流程、发现缺口、定义新 skill 与门禁
+
+对 `supervisor-led`，建议把主控理解成“导演 + 制片”：
+
+- 主控负责：阶段拆解、brief 压缩、门禁判断、结果整合
+- specialist 负责：研究、对标、选题、角度、制作、审校、发布执行
+- 每次委派都要带结构化 stage brief：
+  - `stage`
+  - `objective`
+  - `inputs`
+  - `constraints`
+  - `required_artifacts`
+  - `acceptance_criteria`
+- 每次 specialist 返回后，主控都要先判断：
+  - 产物是否齐全
+  - 门禁是否满足
+  - 是否建议批准下一步
 
 ## 外部 Skill 采纳原则
 

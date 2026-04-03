@@ -20,6 +20,7 @@ version: 1.0.0
 
 1. 确定对标范围：平台、题材、受众、时间窗口、样本数量。
 2. 选样本：头部内容、同题材高互动内容、同受众强创作者。
+3. 如果已经拿到参考视频 URL / BV 号，先用 `reference-video-ingest` 把 metadata 和 transcript artifacts 沉淀出来，再开始拆结构。
 3. 拆每个样本：
    - 开头钩子
    - 结构节奏
@@ -67,6 +68,7 @@ python3 extensions/skills/benchmark-analysis/scripts/build_bilibili_pattern_pack
 - 观察必须来自真实样本，不要用想象代替拆解
 - 明确哪些结论是事实，哪些是推断
 - 结果必须能回答“下一条作品靠什么赢”
+- 如果上游已经拿到参考视频字幕，优先引用 `research/reference-transcript.srt` / `research/reference-transcript.md`，不要只靠二次转述
 - 对 Bilibili 中视频，至少要回答：
   - 前 `30` 秒怎么留人
   - 第一层证明怎么前置

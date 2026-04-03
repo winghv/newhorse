@@ -13,6 +13,7 @@ class TestListSkills:
         assert "media-ops-orchestration" in skill_ids
         assert "content-research" in skill_ids
         assert "benchmark-analysis" in skill_ids
+        assert "reference-video-ingest" in skill_ids
         assert "angle-design" in skill_ids
         assert "competitive-review" in skill_ids
         assert "multi-platform-publishing" in skill_ids
