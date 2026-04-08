@@ -2,13 +2,15 @@
 API Key encryption/decryption using Fernet symmetric encryption.
 Falls back to plaintext storage if ENCRYPTION_KEY is not set (dev mode).
 """
+from typing import Optional
+
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
 from app.core.terminal_ui import ui
 
 
-def _get_fernet() -> Fernet | None:
+def _get_fernet() -> Optional[Fernet]:
     """Get Fernet instance if encryption key is configured."""
     if not settings.encryption_key:
         return None

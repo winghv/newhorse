@@ -78,7 +78,7 @@ def main() -> int:
     scenes = [item for item in scene_manifest.get("scenes", []) if isinstance(item, dict)]
 
     transitions: list[dict[str, Any]] = []
-    for current, nxt in zip(scenes, scenes[1:], strict=False):
+    for current, nxt in zip(scenes, scenes[1:]):
         style = transition_style(str(nxt.get("scene_goal") or ""))
         transitions.append(
             {

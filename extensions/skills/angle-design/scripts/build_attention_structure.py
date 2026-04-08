@@ -83,19 +83,55 @@ def infer_selected_topic(topic_selection: dict[str, Any]) -> str:
     return ""
 
 
+def infer_episode_completion_mode(angle_brief: dict[str, Any]) -> str:
+    for key in ("episode_completion_mode", "completion_mode"):
+        value = angle_brief.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    for key in ("is_multi_part", "multipart", "explicit_series_bridge"):
+        value = angle_brief.get(key)
+        if isinstance(value, bool):
+            return "multipart" if value else "standalone"
+    return "standalone"
+
+
+def clean_backup_angle(value: str) -> str:
+    cleaned = value.strip().strip("。")
+    cleaned = cleaned.removeprefix("从")
+    cleaned = cleaned.strip()
+    if "切入" in cleaned:
+        cleaned = cleaned.split("切入", 1)[0].strip("，, ")
+    cleaned = cleaned.strip("“”\"' ")
+    return cleaned or value.strip().strip("。")
+
+
+def clean_proof_phrase(value: str) -> str:
+    cleaned = value.strip().strip("。")
+    for prefix in ("先", "再", "最后", "然后"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned.removeprefix(prefix).strip()
+            break
+    for marker in ("交付一套可截图的转换框架：", "交付一套可截图的框架：", "把判断框架完整跑一遍："):
+        if cleaned.startswith(marker):
+            cleaned = cleaned.removeprefix(marker).strip()
+            break
+    return cleaned.strip("。")
+
+
 def infer_save_trigger(proof_plan: list[str]) -> str:
     for item in proof_plan:
         if any(keyword in item for keyword in ("框架", "步骤", "模板", "清单")):
-            return f"值得收藏，因为这条会交付可复用的{item.replace('先', '').replace('再', '').strip('。')}"
+            cleaned = clean_proof_phrase(item)
+            return f"值得收藏，因为这条会把「{cleaned}」压成一套可截图的动作框架。"
     if proof_plan:
-        return f"值得收藏，因为它会把「{proof_plan[-1].strip('。')}」讲成可执行动作。"
+        return f"值得收藏，因为它会把「{clean_proof_phrase(proof_plan[-1])}」讲成可执行动作。"
     return "值得收藏，因为它不只给观点，还会给下一步动作。"
 
 
 def infer_series_bridges(selected_topic: str, backup_angles: list[str]) -> list[str]:
     bridges = []
     for angle in backup_angles[:2]:
-        bridges.append(f"下一条我会从「{angle.strip('。')}」继续拆。")
+        bridges.append(f"下一条我会从「{clean_backup_angle(angle)}」继续拆。")
     if not bridges and selected_topic:
         bridges.append(f"下一条继续拆「{selected_topic}」里最容易卡住的一步。")
     return bridges
@@ -121,6 +157,8 @@ def main() -> int:
     selected_topic = infer_selected_topic(topic_selection)
     comment_prompt = str(angle_brief.get("comment_prompt") or "")
     cta = str(angle_brief.get("cta") or "")
+    episode_completion_mode = infer_episode_completion_mode(angle_brief)
+    allow_series_bridge = episode_completion_mode == "multipart"
 
     opening_sequence = [
         {
@@ -156,19 +194,28 @@ def main() -> int:
     ]
 
     save_trigger = infer_save_trigger(proof_plan)
-    series_bridge_variants = infer_series_bridges(selected_topic, backup_angles)
-    follow_cta_variants = [
-        f"如果这条你有共鸣，下一条我把「{backup_angles[0].strip('。')}」拆开讲。"
-        if backup_angles
-        else f"如果这条你有共鸣，下一条我把「{selected_topic or lead_hook}」拆开讲。",
-        f"如果你也卡在「{selected_topic or lead_hook}」，关注后继续看下一条。",
-        cta or "先把问题压回现实，再决定要不要继续问 AI。",
-    ]
+    series_bridge_variants = infer_series_bridges(selected_topic, backup_angles) if allow_series_bridge else []
+    follow_cta_variants = (
+        [
+            f"如果这条你有共鸣，下一条我把「{clean_backup_angle(backup_angles[0])}」拆开讲。"
+            if backup_angles
+            else f"如果这条你有共鸣，下一条我把「{selected_topic or lead_hook}」拆开讲。",
+            f"如果你也卡在「{selected_topic or lead_hook}」，关注后继续看下一条。",
+            cta or "先把问题压回现实，再决定要不要继续问 AI。",
+        ]
+        if allow_series_bridge
+        else [
+            cta or "先把问题压回现实，再做一次验证。",
+            f"如果你也卡在「{selected_topic or lead_hook}」，先把最近一次输入逼成一次现实验证。",
+            "别再先加一条收藏，先把最近学过的一样东西推进现实。",
+        ]
+    )
 
     structure_payload = {
         "content_id": project_root.name,
         "platform": infer_platform(angle_brief),
         "deliverable_type": angle_brief.get("deliverable_type") or "midlong-video",
+        "episode_completion_mode": episode_completion_mode,
         "core_angle": angle_brief.get("core_angle"),
         "selected_topic": selected_topic,
         "lead_hook": lead_hook,
@@ -199,6 +246,7 @@ def main() -> int:
     follow_payload = {
         "content_id": project_root.name,
         "platform": structure_payload["platform"],
+        "episode_completion_mode": episode_completion_mode,
         "comment_prompt": comment_prompt,
         "save_trigger": save_trigger,
         "follow_cta_variants": follow_cta_variants,

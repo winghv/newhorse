@@ -87,8 +87,8 @@ def extract_priority_phrases(notes: list[str]) -> list[str]:
 def build_ass_force_style(font_name: str, font_size: int, margin_v: int) -> str:
     return (
         f"FontName={font_name},FontSize={font_size},PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,Outline=2.4,Shadow=0,"
-        "BackColour=&H5A101010,BorderStyle=1,"
+        "OutlineColour=&H00000000,Outline=2.2,Shadow=0,"
+        "BackColour=&H4A101010,BorderStyle=1,"
         f"MarginV={margin_v},Alignment=2"
     )
 
@@ -104,17 +104,31 @@ def main() -> int:
     notes = [str(item) for item in subtitle_package.get("notes", []) if item]
     priority_phrases = extract_priority_phrases(notes)
     font_name = DEFAULT_FONT_STACK[0]
-    font_size = 20 if primary.get("deliverable_type") == "midlong-video" else 18
-    margin_v = 32
+    is_midlong = primary.get("deliverable_type") == "midlong-video"
+    font_size = 18 if is_midlong else 18
+    margin_v = 44 if is_midlong else 32
+    subtitle_layout = "zh_en_dual_line"
+    translation_language = "en"
 
     payload = {
         "content_id": primary.get("content_id") or project_root.name,
-        "theme": "bilibili-midform-clean" if primary.get("deliverable_type") == "midlong-video" else "default-narrated",
+        "theme": "bilibili-midform-bilingual" if is_midlong else "default-bilingual",
         "font_stack": DEFAULT_FONT_STACK,
         "font_size_rules": {
             "base": font_size,
             "highlight": font_size + 2,
         },
+        "subtitle_layout": subtitle_layout,
+        "subtitle_mode": "bilingual_hardsub",
+        "language_order": ["zh-CN", "en"],
+        "translation_language": translation_language,
+        "translation_required": True,
+        "translation_source_priority": [
+            "voiceover-segments.translation_en",
+            "voiceover-segments.translation",
+            "voiceover-segments.english_text",
+            "subtitle_package.translation_map",
+        ],
         "highlight_rules": {
             "priority_phrases": priority_phrases,
             "highlight_mode": "phrase-first",
@@ -123,7 +137,7 @@ def main() -> int:
             "margin_v": margin_v,
             "alignment": 2,
         },
-        "line_break_policy": subtitle_package.get("style") or "按意群断句，单行 14-20 字优先",
+        "line_break_policy": subtitle_package.get("style") or "中文在上、英文在下；按意群断句；中文单行 14-20 字优先，英文保持短句对照",
         "burn_in_mode": "hardsub",
         "ass_force_style": build_ass_force_style(font_name, font_size, margin_v),
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -165,6 +165,7 @@ def test_build_attention_structure_creates_opening_and_follow_hook_artifacts(tmp
     follow_hooks = json.loads(follow_hooks_path.read_text(encoding="utf-8"))
 
     assert structure["lead_hook"] == "为什么越会用 AI 的人，越容易做不出决定？"
+    assert structure["episode_completion_mode"] == "standalone"
     assert structure["opening_sequence"][0]["time_window"] == "0-3s"
     assert structure["opening_sequence"][0]["script_line"] == "为什么越会用 AI 的人，越容易做不出决定？"
     assert structure["proof_reveal_plan"][0]["proof_beat"] == "先拆清楚信息题和权重题。"
@@ -172,7 +173,12 @@ def test_build_attention_structure_creates_opening_and_follow_hook_artifacts(tmp
 
     assert follow_hooks["comment_prompt"] == structure["comment_trigger"]
     assert follow_hooks["follow_cta_variants"]
-    assert any("下一条" in item for item in follow_hooks["series_bridge_variants"])
+    assert follow_hooks["episode_completion_mode"] == "standalone"
+    assert follow_hooks["series_bridge_variants"] == []
+    assert all("下一条" not in item for item in follow_hooks["follow_cta_variants"])
+    assert "交付可复用的交付" not in follow_hooks["save_trigger"]
+    assert "从“" not in follow_hooks["follow_cta_variants"][0]
+    assert "切入" not in follow_hooks["follow_cta_variants"][0]
 
 
 def test_build_opening_scorecard_creates_growth_review_artifact(tmp_path: Path) -> None:

@@ -35,6 +35,7 @@ def make_scene_package(project_root: Path) -> None:
                     "title": "开场问题",
                     "chapter_goal": "先给冲突和异常点",
                     "summary": "什么都知道，却不敢决定。",
+                    "emphasis_quotes": ["什么都知道，却不敢决定"],
                 },
                 {
                     "chapter_id": "ch2",
@@ -47,6 +48,14 @@ def make_scene_package(project_root: Path) -> None:
                     "title": "框架交付",
                     "chapter_goal": "把四步框架交成能带走的模板",
                     "summary": "来源、反证、约束、试错。",
+                    "emphasis_quotes": [
+                        {
+                            "text": "输出 / 暴露 / 反馈 / 结果",
+                            "anchor": "upper_center",
+                            "chars_per_second": 9,
+                            "duration_seconds": 3.8,
+                        }
+                    ],
                 },
             ],
         },
@@ -129,9 +138,11 @@ def test_build_scene_manifest_creates_required_scene_fields(tmp_path: Path) -> N
     assert payload["scenes"][0]["scene_id"] == "scene-01-ch1"
     assert payload["scenes"][0]["transition_in"] == "cold_open_cut"
     assert any(effect["type"] == "typewriter_quote" for effect in payload["scenes"][0]["emphasis_fx"])
-    assert payload["scenes"][1]["primary_asset"]["path"] == "assets/graphics/card-02-offer.png"
-    assert payload["scenes"][2]["subtitle_mode"] == "narrated_hardsub"
-    assert payload["scenes"][2]["emphasis_fx"]
+    assert any(effect.get("text") == "什么都知道，却不敢决定" for effect in payload["scenes"][0]["emphasis_fx"])
+    assert payload["scenes"][1]["primary_asset"]["path"] == "assets/reused/stock-2.mp4"
+    assert payload["scenes"][2]["subtitle_mode"] == "bilingual_hardsub"
+    assert payload["scenes"][2]["visual_treatment"]["pure_text_card_allowed"] is False
+    assert any(effect.get("text") == "输出 / 暴露 / 反馈 / 结果" for effect in payload["scenes"][2]["emphasis_fx"])
 
 
 def test_build_transition_plan_creates_transition_and_emphasis_outputs(tmp_path: Path) -> None:
@@ -166,6 +177,48 @@ def test_build_transition_plan_creates_transition_and_emphasis_outputs(tmp_path:
     assert emphasis_plan["scene_fx"][0]["effects"][0]["type"] == "headline_punch"
     assert any(effect["type"] == "typewriter_quote" for effect in emphasis_plan["scene_fx"][0]["effects"])
     assert emphasis_plan["scene_fx"][1]["effects"][0]["type"] == "proof_focus"
+
+
+def test_build_scene_manifest_promotes_globbed_visual_prebake_fallback(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-postproduction-assembly"
+        / "scripts"
+        / "build_scene_manifest.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-06-visual-prebake-scene"
+    make_scene_package(project_root)
+    visual_dir = project_root / "content" / "postproduction" / "minimax-output" / "visual-prebake" / "images"
+    visual_dir.mkdir(parents=True, exist_ok=True)
+    (visual_dir / "001_overloaded_desk_1.jpg").write_bytes(b"fake-image")
+
+    write_json(
+        project_root / "assets" / "scene-asset-plan.json",
+        {
+            "content_id": project_root.name,
+            "chapters": [
+                {
+                    "chapter_id": "ch1",
+                    "scene_goal": "先给冲突和异常点",
+                    "proof_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                    "supporting_b_roll": [],
+                    "fallback_graphics": [
+                        "content/postproduction/minimax-output/visual-prebake/images/001_overloaded_desk_*.jpg"
+                    ],
+                    "approved_generation_slots": [],
+                }
+            ],
+        },
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    payload = json.loads((project_root / "content" / "postproduction" / "scene-manifest.json").read_text(encoding="utf-8"))
+    assert payload["scenes"][0]["primary_asset"]["path"] == "content/postproduction/minimax-output/visual-prebake/images/001_overloaded_desk_1.jpg"
+    assert payload["scenes"][0]["primary_asset"]["type"] == "image"
 
 
 def test_render_plan_and_render_workflow_emit_scene_assembly_report(tmp_path: Path) -> None:

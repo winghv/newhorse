@@ -212,6 +212,96 @@ def test_build_scene_asset_plan_prefers_generated_keyframes_for_chapter_proof_as
     assert any(path.endswith("assets/graphics/card-02-offer.png") for path in chapter_two["fallback_graphics"])
 
 
+def test_build_scene_asset_plan_prefers_visual_prebake_assets_when_declared(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-asset-planning"
+        / "scripts"
+        / "build_scene_asset_plan.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-06-visual-prebake"
+    make_visual_asset_package(project_root)
+    prebake_dir = project_root / "content" / "postproduction" / "minimax-output" / "visual-prebake" / "images"
+    prebake_dir.mkdir(parents=True, exist_ok=True)
+    proof_path = prebake_dir / "001_hook.jpg"
+    alt_path = prebake_dir / "002_hook_alt.jpg"
+    proof_path.write_bytes(b"jpg")
+    alt_path.write_bytes(b"jpg")
+    write_json(
+        project_root / "assets" / "visual-prebake-plan.json",
+        {
+            "chapters": [
+                {
+                    "chapter_id": "ch1",
+                    "proof_asset": {
+                        "path": "content/postproduction/minimax-output/visual-prebake/images/001_hook.jpg",
+                        "type": "generated-keyart",
+                    },
+                    "supporting_images": [
+                        "content/postproduction/minimax-output/visual-prebake/images/002_hook_alt.jpg",
+                    ],
+                    "max_repeat_uses": 1,
+                }
+            ]
+        },
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    scene_asset_plan = json.loads((project_root / "assets" / "scene-asset-plan.json").read_text(encoding="utf-8"))
+    chapter_one = scene_asset_plan["chapters"][0]
+    assert chapter_one["proof_asset"]["path"].endswith("content/postproduction/minimax-output/visual-prebake/images/001_hook.jpg")
+    assert chapter_one["proof_asset"]["type"] == "generated-keyart"
+    assert any(path.endswith("content/postproduction/minimax-output/visual-prebake/images/002_hook_alt.jpg") for path in chapter_one["fallback_graphics"])
+    assert chapter_one["max_repeat_uses"] == 1
+
+
+def test_build_scene_asset_plan_includes_successful_generated_video_assets(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-asset-planning"
+        / "scripts"
+        / "build_scene_asset_plan.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-07-generated-video-assets"
+    make_visual_asset_package(project_root)
+    generated_video = project_root / "content" / "postproduction" / "minimax-output" / "visual-prebake" / "videos" / "hero-open.mp4"
+    generated_video.parent.mkdir(parents=True, exist_ok=True)
+    generated_video.write_bytes(b"mp4")
+    write_json(
+        project_root / "assets" / "generation-ledger.json",
+        {
+            "entries": [
+                {
+                    "slot_id": "shot-hero-open",
+                    "chapter_id": "ch1",
+                    "generation_type": "image-to-video",
+                    "status": "success",
+                    "asset_path": "content/postproduction/minimax-output/visual-prebake/videos/hero-open.mp4",
+                    "duration_seconds": 5.875,
+                }
+            ]
+        },
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    scene_asset_plan = json.loads((project_root / "assets" / "scene-asset-plan.json").read_text(encoding="utf-8"))
+    chapter_one = scene_asset_plan["chapters"][0]
+    generated_entries = [item for item in chapter_one["supporting_b_roll"] if item.get("source_track") == "generated"]
+
+    assert generated_entries
+    assert generated_entries[0]["clip_id"] == "shot-hero-open"
+    assert generated_entries[0]["asset_path"].endswith("content/postproduction/minimax-output/visual-prebake/videos/hero-open.mp4")
+    assert generated_entries[0]["generation_type"] == "image-to-video"
+
+
 def test_audit_visual_diversity_flags_repeated_assets(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[4]
     scene_plan_script = (
@@ -330,3 +420,56 @@ def test_build_video_automation_plan_includes_visual_asset_tasks(tmp_path: Path)
     assert payload["summary"]["scene_asset_plan_exists"] is True
     assert payload["summary"]["visual_diversity_status"] == "pass"
     assert payload["summary"]["approved_generation_slot_count"] == 1
+
+
+def test_build_video_automation_plan_splits_voiceover_and_subtitle_chain(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    automation_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "media-ops-orchestration"
+        / "scripts"
+        / "build_video_automation_plan.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-03-automation-voice-chain"
+    make_visual_asset_package(project_root)
+    (project_root / "content" / "postproduction").mkdir(parents=True, exist_ok=True)
+
+    write_json(
+        project_root / "content" / "postproduction" / "voiceover-profile.json",
+        {
+            "render_targets": {
+                "segments_file": "content/postproduction/voiceover-segments.json",
+                "voiceover_audio": "content/postproduction/minimax-output/voiceover.mp3",
+                "subtitle_draft": "content/postproduction/subtitles.srt",
+            }
+        },
+    )
+    write_json(
+        project_root / "content" / "postproduction" / "voiceover-segments.json",
+        [{"text": "新版旁白", "emotion": "focused"}],
+    )
+    (project_root / "content" / "postproduction" / "minimax-output").mkdir(parents=True, exist_ok=True)
+    (project_root / "content" / "postproduction" / "minimax-output" / "voiceover.mp3").write_bytes(b"voice")
+    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\n旧字幕\n",
+        encoding="utf-8",
+    )
+
+    import os
+
+    os.utime(project_root / "content" / "postproduction" / "subtitles.srt", (1_700_000_000, 1_700_000_000))
+    os.utime(project_root / "content" / "postproduction" / "voiceover-segments.json", (1_700_000_100, 1_700_000_100))
+    os.utime(project_root / "content" / "postproduction" / "minimax-output" / "voiceover.mp3", (1_700_000_100, 1_700_000_100))
+
+    run_command([sys.executable, str(automation_script), "--project-root", str(project_root)], repo_root)
+
+    payload = json.loads((project_root / "review" / "video-automation-plan.json").read_text(encoding="utf-8"))
+    tasks = {task["task_id"]: task for task in payload["tasks"]}
+
+    assert tasks["tts-handoff"]["status"] == "completed"
+    assert tasks["voiceover-generate"]["status"] == "completed"
+    assert tasks["subtitle-from-voiceover"]["status"] == "ready_to_run"
+    assert payload["summary"]["voiceover_audio_exists"] is True
+    assert payload["summary"]["subtitle_up_to_date"] is False

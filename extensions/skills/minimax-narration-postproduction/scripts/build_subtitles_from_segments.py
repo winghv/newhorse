@@ -17,6 +17,8 @@ TRAILING_PUNCTUATION = SENTENCE_BREAKS + CLAUSE_BREAKS + "…,.!?;:"
 DEFAULT_SILENCE_NOISE_DB = "-35dB"
 DEFAULT_MIN_SILENCE_SECONDS = 0.12
 MIN_CUE_DURATION_SECONDS = 0.8
+TRANSLATION_SENTENCE_BREAKS = ".!?;"
+TRANSLATION_CLAUSE_BREAKS = ",:;"
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,6 +90,23 @@ def load_json(path: Path | None) -> dict[str, Any]:
         return {}
 
 
+def detect_content_packet(project_root: Path) -> Path | None:
+    content_dir = project_root / "content"
+    if not content_dir.exists():
+        return None
+    prioritized = ["*video.json", "content-packet.json", "*.json"]
+    for pattern in prioritized:
+        matches = sorted(path for path in content_dir.glob(pattern) if path.is_file())
+        if matches:
+            return matches[0]
+    return None
+
+
+def primary_packet(payload: dict[str, Any]) -> dict[str, Any]:
+    nested = payload.get("content_packet")
+    return nested if isinstance(nested, dict) else payload
+
+
 def load_segments(path: Path) -> list[dict[str, Any]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
@@ -140,7 +159,7 @@ def detect_silence_ranges(
     starts = [float(match.group(1)) for match in re.finditer(r"silence_start:\s*([0-9.]+)", stderr)]
     ends = [float(match.group(1)) for match in re.finditer(r"silence_end:\s*([0-9.]+)", stderr)]
     ranges: list[tuple[float, float]] = []
-    for start, end in zip(starts, ends, strict=False):
+    for start, end in zip(starts, ends):
         if end <= start:
             continue
         ranges.append((start, end))
@@ -207,6 +226,120 @@ def build_cue_texts(text: str, max_chars: int) -> list[str]:
     return [cue.strip() for cue in merged if cue.strip()]
 
 
+def normalize_translation_text(text: str) -> str:
+    cleaned = text.replace("\n", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def resolve_translation_text(segment: dict[str, Any], translation_map: dict[str, str]) -> str:
+    translation_payload = segment.get("subtitle_translation")
+    if isinstance(translation_payload, dict):
+        english = translation_payload.get("en")
+        if isinstance(english, str) and english.strip():
+            return normalize_translation_text(english)
+
+    for key in ("translation_en", "english_text", "translation"):
+        value = segment.get(key)
+        if isinstance(value, str) and value.strip():
+            return normalize_translation_text(value)
+
+    segment_text = normalize_text(str(segment.get("text") or ""))
+    mapped = translation_map.get(segment_text)
+    return normalize_translation_text(mapped) if mapped else ""
+
+
+def resolve_explicit_translation_cues(segment: dict[str, Any]) -> list[str] | None:
+    for key in ("translation_cues", "translation_lines"):
+        value = segment.get(key)
+        if not isinstance(value, list):
+            continue
+        cues = [normalize_translation_text(str(item)) for item in value if str(item).strip()]
+        if cues:
+            return cues
+    return None
+
+
+def merge_translation_fragments(fragments: list[str], cue_count: int) -> list[str]:
+    if cue_count <= 0:
+        return []
+    if not fragments:
+        return [""] * cue_count
+    if cue_count == 1:
+        return [" ".join(fragment for fragment in fragments if fragment).strip()]
+
+    chunk_count = min(max(cue_count, 1), len(fragments))
+    merged: list[str] = []
+    start_index = 0
+    for index in range(chunk_count):
+        end_index = round((index + 1) * len(fragments) / chunk_count)
+        part = " ".join(fragment for fragment in fragments[start_index:end_index] if fragment).strip()
+        merged.append(part)
+        start_index = end_index
+
+    while len(merged) < cue_count:
+        merged.append("")
+    return merged[:cue_count]
+
+
+def split_translation_evenly(text: str, cue_count: int) -> list[str]:
+    cleaned = normalize_translation_text(text)
+    if cue_count <= 0:
+        return []
+    if not cleaned:
+        return [""] * cue_count
+    if cue_count == 1:
+        return [cleaned]
+
+    fragments = re.findall(
+        rf"[^{re.escape(TRANSLATION_SENTENCE_BREAKS)}]+(?:[{re.escape(TRANSLATION_SENTENCE_BREAKS)}]+|$)",
+        cleaned,
+    )
+    fragments = [fragment.strip() for fragment in fragments if fragment.strip()]
+    if len(fragments) >= cue_count:
+        return merge_translation_fragments(fragments, cue_count)
+
+    clause_fragments = re.findall(
+        rf"[^{re.escape(TRANSLATION_CLAUSE_BREAKS)}]+(?:[{re.escape(TRANSLATION_CLAUSE_BREAKS)}]+|$)",
+        cleaned,
+    )
+    clause_fragments = [fragment.strip() for fragment in clause_fragments if fragment.strip()]
+    if len(clause_fragments) >= cue_count:
+        return merge_translation_fragments(clause_fragments, cue_count)
+
+    words = cleaned.split()
+    if not words:
+        return [""] * cue_count
+    chunks: list[str] = []
+    start_index = 0
+    for index in range(cue_count):
+        end_index = round((index + 1) * len(words) / cue_count)
+        if end_index <= start_index and start_index < len(words):
+            end_index = start_index + 1
+        chunks.append(" ".join(words[start_index:end_index]).strip())
+        start_index = min(end_index, len(words))
+    return chunks
+
+
+def translation_cues_for_segment(
+    segment: dict[str, Any],
+    cue_count: int,
+    translation_map: dict[str, str],
+) -> list[str]:
+    if cue_count <= 0:
+        return []
+
+    explicit_cues = resolve_explicit_translation_cues(segment)
+    if explicit_cues:
+        cues = explicit_cues[:cue_count]
+        while len(cues) < cue_count:
+            cues.append("")
+        return cues
+
+    translation_text = resolve_translation_text(segment, translation_map)
+    return split_translation_evenly(translation_text, cue_count)
+
+
 def cue_weight(text: str) -> int:
     stripped = re.sub(rf"[{re.escape(TRAILING_PUNCTUATION)}]", "", text)
     return max(len(stripped), 1)
@@ -222,6 +355,74 @@ def resolve_segment_audio_paths(
         if len(audio_files) == len(segments):
             return [path.resolve() for path in audio_files]
     return [None] * len(segments)
+
+
+def read_raw_segment_durations(segment_audio_paths: list[Path | None]) -> list[float] | None:
+    if not segment_audio_paths or any(path is None or not path.exists() for path in segment_audio_paths):
+        return None
+    return [ffprobe_duration(path) for path in segment_audio_paths if path is not None]
+
+
+def infer_crossfade_seconds(raw_segment_durations: list[float], voiceover_audio: Path | None) -> float:
+    if voiceover_audio is None or not voiceover_audio.exists() or len(raw_segment_durations) < 2:
+        return 0.0
+
+    merged_duration = ffprobe_duration(voiceover_audio)
+    total_raw_duration = sum(raw_segment_durations)
+    total_overlap = total_raw_duration - merged_duration
+    if total_overlap <= 0:
+        return 0.0
+
+    inferred = total_overlap / max(len(raw_segment_durations) - 1, 1)
+    # Guard against pathological inference from odd encodes.
+    max_reasonable = min(raw_segment_durations) * 0.5
+    return max(0.0, min(inferred, max_reasonable))
+
+
+def build_segment_timeline_from_audio(
+    *,
+    segments: list[dict[str, Any]],
+    segment_audio_paths: list[Path | None],
+    voiceover_audio: Path | None,
+) -> tuple[list[float], list[float], dict[str, Any]] | None:
+    raw_segment_durations = read_raw_segment_durations(segment_audio_paths)
+    if raw_segment_durations is None:
+        return None
+
+    inferred_crossfade_seconds = infer_crossfade_seconds(raw_segment_durations, voiceover_audio)
+    pause_durations = [
+        max(float(segment.get("pause_after_ms", 0) or 0), 0.0) / 1000.0 if index < len(raw_segment_durations) - 1 else 0.0
+        for index, segment in enumerate(segments)
+    ]
+    starts: list[float] = []
+    cursor = 0.0
+    for index, duration in enumerate(raw_segment_durations):
+        if index == 0:
+            starts.append(0.0)
+            cursor = duration + pause_durations[index]
+            continue
+        cursor -= inferred_crossfade_seconds
+        starts.append(max(cursor, 0.0))
+        cursor += duration + pause_durations[index]
+
+    durations = list(raw_segment_durations)
+    expected_total = starts[-1] + durations[-1] if starts and durations else 0.0
+    merged_duration = ffprobe_duration(voiceover_audio) if voiceover_audio and voiceover_audio.exists() else expected_total
+    if expected_total > 0 and merged_duration > 0:
+        scale = merged_duration / expected_total
+        starts = [start * scale for start in starts]
+        durations = [duration * scale for duration in durations]
+
+    return (
+        starts,
+        durations,
+        {
+            "alignment_mode": "segment_audio_forced",
+            "inferred_crossfade_seconds": round(inferred_crossfade_seconds, 3),
+            "total_pause_seconds": round(sum(pause_durations), 3),
+            "merged_duration_seconds": round(merged_duration, 3),
+        },
+    )
 
 
 def read_segment_durations(
@@ -432,43 +633,91 @@ def build_srt_payload(
     segments: list[dict[str, Any]],
     segment_durations: list[float],
     max_chars: int,
+    bilingual_enabled: bool,
+    translation_map: dict[str, str],
     segment_audio_paths: list[Path | None] | None = None,
-) -> tuple[str, int, float]:
+    segment_start_times: list[float] | None = None,
+) -> tuple[str, int, float, int, int]:
     cursor = 0.0
     blocks: list[str] = []
     cue_index = 1
+    translated_cue_count = 0
+    missing_translation_segment_count = 0
 
-    for index, (segment, segment_duration) in enumerate(zip(segments, segment_durations, strict=True)):
+    if len(segments) != len(segment_durations):
+        raise ValueError("segments and segment_durations must have the same length")
+
+    for index, (segment, segment_duration) in enumerate(zip(segments, segment_durations)):
+        segment_start = segment_start_times[index] if segment_start_times and index < len(segment_start_times) else cursor
         cue_texts = build_cue_texts(segment["text"], max_chars=max_chars)
         if not cue_texts:
             continue
+        translation_cues = translation_cues_for_segment(segment, len(cue_texts), translation_map) if bilingual_enabled else []
+        if bilingual_enabled and not any(item.strip() for item in translation_cues):
+            missing_translation_segment_count += 1
         audio_path = segment_audio_paths[index] if segment_audio_paths and index < len(segment_audio_paths) else None
         cue_durations = allocate_cue_durations_with_audio(
             cues=cue_texts,
             segment_duration=segment_duration,
             audio_path=audio_path,
         )
-        for cue_text, cue_duration in zip(cue_texts, cue_durations, strict=True):
-            start = cursor
-            end = cursor + cue_duration
+        if len(cue_texts) != len(cue_durations):
+            raise ValueError("cue_texts and cue_durations must have the same length")
+        cue_cursor = segment_start
+        for cue_offset, (cue_text, cue_duration) in enumerate(zip(cue_texts, cue_durations)):
+            start = cue_cursor
+            end = cue_cursor + cue_duration
+            translation_line = (
+                translation_cues[cue_offset].strip()
+                if cue_offset < len(translation_cues) and isinstance(translation_cues[cue_offset], str)
+                else ""
+            )
+            subtitle_lines = [cue_text]
+            if bilingual_enabled and translation_line:
+                subtitle_lines.append(translation_line)
+                translated_cue_count += 1
             blocks.append(
                 "\n".join(
                     [
                         str(cue_index),
                         f"{format_timestamp(start)} --> {format_timestamp(end)}",
-                        cue_text,
+                        *subtitle_lines,
                     ]
                 )
             )
-            cursor = end
+            cue_cursor = end
             cue_index += 1
+        cursor = max(cursor, cue_cursor)
 
-    return "\n\n".join(blocks) + ("\n" if blocks else ""), cue_index - 1, cursor
+    return (
+        "\n\n".join(blocks) + ("\n" if blocks else ""),
+        cue_index - 1,
+        cursor,
+        translated_cue_count,
+        missing_translation_segment_count,
+    )
 
 
 def main() -> int:
     args = parse_args()
     project_root = resolve_project_root(args)
+    content_packet_path = detect_content_packet(project_root)
+    content_packet = primary_packet(load_json(content_packet_path)) if content_packet_path else {}
+    subtitle_package = (
+        content_packet.get("subtitle_package") if isinstance(content_packet.get("subtitle_package"), dict) else {}
+    )
+    style_pack = load_json(project_root / "content" / "postproduction" / "subtitle-style-pack.json")
+    translation_map_raw = subtitle_package.get("translation_map") if isinstance(subtitle_package.get("translation_map"), dict) else {}
+    translation_map = {
+        normalize_text(str(key)): normalize_translation_text(str(value.get("en") if isinstance(value, dict) else value))
+        for key, value in translation_map_raw.items()
+        if str(key).strip() and str(value.get("en") if isinstance(value, dict) else value).strip()
+    }
+    bilingual_enabled = bool(
+        subtitle_package.get("translation_required")
+        or style_pack.get("translation_required")
+        or content_packet.get("deliverable_type") == "midlong-video"
+    )
     profile_path = project_root / "content" / "postproduction" / "voiceover-profile.json"
     voiceover_profile = load_json(profile_path)
     render_targets = voiceover_profile.get("render_targets") if isinstance(voiceover_profile.get("render_targets"), dict) else {}
@@ -489,16 +738,33 @@ def main() -> int:
 
     segments = load_segments(segments_path)
     segment_audio_paths = resolve_segment_audio_paths(segments=segments, segment_audio_dir=segment_audio_dir)
-    segment_durations = read_segment_durations(
+    segment_timeline = build_segment_timeline_from_audio(
         segments=segments,
-        segment_audio_dir=segment_audio_dir,
+        segment_audio_paths=segment_audio_paths,
         voiceover_audio=voiceover_audio if voiceover_audio and voiceover_audio.exists() else None,
     )
-    srt_payload, cue_count, total_duration = build_srt_payload(
+    if segment_timeline is not None:
+        segment_start_times, segment_durations, alignment_summary = segment_timeline
+    else:
+        segment_start_times = None
+        segment_durations = read_segment_durations(
+            segments=segments,
+            segment_audio_dir=segment_audio_dir,
+            voiceover_audio=voiceover_audio if voiceover_audio and voiceover_audio.exists() else None,
+        )
+        alignment_summary = {
+            "alignment_mode": "duration_weighted",
+            "inferred_crossfade_seconds": 0.0,
+            "merged_duration_seconds": round(sum(segment_durations), 3),
+        }
+    srt_payload, cue_count, total_duration, translated_cue_count, missing_translation_segment_count = build_srt_payload(
         segments,
         segment_durations,
         max_chars=args.max_chars,
+        bilingual_enabled=bilingual_enabled,
+        translation_map=translation_map,
         segment_audio_paths=segment_audio_paths,
+        segment_start_times=segment_start_times,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -512,6 +778,12 @@ def main() -> int:
                 "cue_count": cue_count,
                 "duration_seconds": round(total_duration, 3),
                 "voiceover_audio": str(voiceover_audio) if voiceover_audio else None,
+                "alignment_mode": alignment_summary["alignment_mode"],
+                "inferred_crossfade_seconds": alignment_summary["inferred_crossfade_seconds"],
+                "total_pause_seconds": alignment_summary.get("total_pause_seconds", 0.0),
+                "bilingual_enabled": bilingual_enabled,
+                "translated_cue_count": translated_cue_count,
+                "missing_translation_segment_count": missing_translation_segment_count,
                 "segment_audio_dir": relative_to_project(segment_audio_dir, project_root)
                 if segment_audio_dir.exists()
                 else None,

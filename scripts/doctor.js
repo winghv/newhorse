@@ -54,12 +54,42 @@ function parseVersion(str) {
     return { major: parseInt(match[1]), minor: parseInt(match[2]), patch: parseInt(match[3] || 0) };
 }
 
+function findSupportedPython() {
+    const candidates = ['python3.12', 'python3.11', 'python3.10', 'python3'];
+    for (const executable of candidates) {
+        const output = runCmd(`${executable} --version`);
+        const version = parseVersion(output);
+        if (version && (version.major > 3 || (version.major === 3 && version.minor >= 10))) {
+            return { executable, output };
+        }
+    }
+    return null;
+}
+
+function ffmpegFilterAvailable(filtersOutput, filterName) {
+    if (!filtersOutput) {
+        return false;
+    }
+    const pattern = new RegExp(`^\\s*[.A-Z]+\\s+${filterName}(?:\\s|$)`, 'm');
+    return pattern.test(filtersOutput);
+}
+
 function checkPort(port) {
     return new Promise((resolve) => {
         const server = net.createServer();
-        server.once('error', () => resolve(false));
+        server.once('error', (error) => {
+            if (error && error.code === 'EADDRINUSE') {
+                resolve({ status: 'in_use' });
+                return;
+            }
+            if (error && error.code === 'EPERM') {
+                resolve({ status: 'restricted', code: error.code });
+                return;
+            }
+            resolve({ status: 'error', code: error && error.code ? error.code : 'UNKNOWN' });
+        });
         server.once('listening', () => {
-            server.close(() => resolve(true));
+            server.close(() => resolve({ status: 'free' }));
         });
         server.listen(port, '0.0.0.0');
     });
@@ -80,12 +110,9 @@ async function main() {
     }
 
     // --- Python ---
-    const pythonOut = runCmd('python3 --version');
-    const pythonVer = parseVersion(pythonOut);
-    if (pythonVer && (pythonVer.major > 3 || (pythonVer.major === 3 && pythonVer.minor >= 10))) {
-        pass('Python', pythonOut.replace('Python ', ''));
-    } else if (pythonOut) {
-        fail(`Python >= 3.10 required, found ${pythonOut}`, 'Install Python 3.10+ from https://python.org');
+    const pythonInfo = findSupportedPython();
+    if (pythonInfo) {
+        pass('Python', `${pythonInfo.output.replace('Python ', '')} via ${pythonInfo.executable}`);
     } else {
         fail('Python 3 not found', 'Install Python 3.10+ from https://python.org');
     }
@@ -106,21 +133,47 @@ async function main() {
         warn('Claude CLI not found', 'Optional — install from https://docs.anthropic.com');
     }
 
+    const ffmpegVersion = runCmd('ffmpeg -hide_banner -version');
+    const ffmpegFilters = runCmd('ffmpeg -hide_banner -filters');
+    if (ffmpegVersion) {
+        pass('ffmpeg', ffmpegVersion.split('\n')[0].replace('ffmpeg version ', ''));
+        if (ffmpegFilterAvailable(ffmpegFilters, 'drawtext')) {
+            pass('ffmpeg drawtext filter');
+        } else {
+            warn('ffmpeg drawtext filter missing', 'Typewriter overlays and text burns will fall back');
+        }
+        if (ffmpegFilterAvailable(ffmpegFilters, 'subtitles')) {
+            pass('ffmpeg subtitles filter');
+        } else {
+            warn('ffmpeg subtitles filter missing', 'Final renders will skip burned-in subtitles on this machine');
+        }
+    } else {
+        warn('ffmpeg not found', 'Media render workflows need ffmpeg installed');
+    }
+
     // --- Ports ---
     console.log();
     console.log(bold('  Ports'));
-    const port8999Free = await checkPort(8999);
-    if (port8999Free) {
+    const port8999Status = await checkPort(8999);
+    if (port8999Status.status === 'free') {
         pass('Port 8999 is free', 'API server');
-    } else {
+    } else if (port8999Status.status === 'restricted') {
+        warn('Port 8999 check skipped', 'Current environment disallows bind probes; verify manually if needed');
+    } else if (port8999Status.status === 'in_use') {
         fail('Port 8999 is in use', 'Stop the process using port 8999 or change API_PORT in .env');
+    } else {
+        warn('Port 8999 check inconclusive', port8999Status.code || 'unknown error');
     }
 
-    const port3999Free = await checkPort(3999);
-    if (port3999Free) {
+    const port3999Status = await checkPort(3999);
+    if (port3999Status.status === 'free') {
         pass('Port 3999 is free', 'Web server');
-    } else {
+    } else if (port3999Status.status === 'restricted') {
+        warn('Port 3999 check skipped', 'Current environment disallows bind probes; verify manually if needed');
+    } else if (port3999Status.status === 'in_use') {
         fail('Port 3999 is in use', 'Stop the process using port 3999');
+    } else {
+        warn('Port 3999 check inconclusive', port3999Status.code || 'unknown error');
     }
 
     // --- Files ---
@@ -134,10 +187,36 @@ async function main() {
     }
 
     const venvPath = path.join(rootDir, 'apps', 'api', 'venv');
-    if (fs.existsSync(venvPath)) {
-        pass('Python venv exists', 'apps/api/venv');
+    const venvPython = path.join(venvPath, 'bin', 'python');
+    if (fs.existsSync(venvPath) && fs.existsSync(venvPython)) {
+        const venvPythonOut = runCmd(`"${venvPython}" --version`);
+        const venvPythonVer = parseVersion(venvPythonOut);
+        if (venvPythonVer && (venvPythonVer.major > 3 || (venvPythonVer.major === 3 && venvPythonVer.minor >= 10))) {
+            pass('Python venv is healthy', venvPythonOut.replace('Python ', ''));
+        } else if (venvPythonOut) {
+            fail(`Python venv is too old: ${venvPythonOut}`, 'Run: npm run ensure:venv');
+        } else {
+            fail('Python venv exists but interpreter is broken', 'Run: npm run ensure:venv');
+        }
     } else {
         fail('Python venv missing', 'Run: npm run ensure:venv');
+    }
+
+    const dotVenvPath = path.join(rootDir, 'apps', 'api', '.venv');
+    try {
+        const stat = fs.lstatSync(dotVenvPath);
+        if (stat.isSymbolicLink()) {
+            const target = fs.readlinkSync(dotVenvPath);
+            if (target === 'venv') {
+                pass('.venv alias', 'apps/api/.venv -> venv');
+            } else {
+                warn('.venv points somewhere else', target);
+            }
+        } else {
+            warn('.venv exists but is not an alias', 'apps/api/.venv');
+        }
+    } catch {
+        warn('.venv alias missing', 'Optional but recommended for editor/tool compatibility');
     }
 
     // --- Summary ---

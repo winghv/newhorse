@@ -14,6 +14,8 @@ from typing import Any
 SENTENCE_BREAKS = "。！？；"
 CLAUSE_BREAKS = "，、："
 DEFAULT_SEGMENT_MAX_CHARS = 180
+DEFAULT_TIGHT_BASE_SPEED = 1.03
+ORDINAL_FRAMEWORK_RE = re.compile(r"^\s*(第[一二三四五六七八九十]+|首先|其次|再次|最后)[，、：:]?")
 
 
 def parse_args() -> argparse.Namespace:
@@ -165,6 +167,8 @@ def segment_blocks(text: str, max_chars: int = DEFAULT_SEGMENT_MAX_CHARS) -> lis
 
 
 def detect_scene_purpose(segment: str, *, index: int, total: int) -> str:
+    if ORDINAL_FRAMEWORK_RE.search(segment):
+        return "framework"
     if index == 0 or "？" in segment or "为什么" in segment:
         return "hook"
     if any(keyword in segment for keyword in ("举个例子", "举个", "案例", "offer", "相反建议", "证明")):
@@ -176,16 +180,27 @@ def detect_scene_purpose(segment: str, *, index: int, total: int) -> str:
     return "explanation"
 
 
-def purpose_directives(scene_purpose: str, base_speed: float) -> dict[str, Any]:
-    if scene_purpose == "hook":
-        return {"emotion": "surprised", "speed": min(base_speed + 0.05, 1.08), "pause_after_ms": 160, "intensity": "high"}
-    if scene_purpose == "proof":
+def purpose_directives(scene_purpose: str, base_speed: float, delivery_profile: str) -> dict[str, Any]:
+    if delivery_profile == "measured_explainer":
+        if scene_purpose == "hook":
+            return {"emotion": "surprised", "speed": min(base_speed + 0.05, 1.08), "pause_after_ms": 160, "intensity": "high"}
+        if scene_purpose == "proof":
+            return {"emotion": "calm", "speed": base_speed, "pause_after_ms": 220, "intensity": "medium"}
+        if scene_purpose == "framework":
+            return {"emotion": "fluent", "speed": max(base_speed - 0.03, 0.9), "pause_after_ms": 260, "intensity": "medium"}
+        if scene_purpose == "cta":
+            return {"emotion": "calm", "speed": max(base_speed - 0.01, 0.9), "pause_after_ms": 300, "intensity": "medium_high"}
         return {"emotion": "calm", "speed": base_speed, "pause_after_ms": 220, "intensity": "medium"}
+
+    if scene_purpose == "hook":
+        return {"emotion": "surprised", "speed": min(base_speed + 0.06, 1.12), "pause_after_ms": 90, "intensity": "high"}
+    if scene_purpose == "proof":
+        return {"emotion": "calm", "speed": min(base_speed + 0.01, 1.1), "pause_after_ms": 120, "intensity": "medium"}
     if scene_purpose == "framework":
-        return {"emotion": "fluent", "speed": max(base_speed - 0.03, 0.9), "pause_after_ms": 260, "intensity": "medium"}
+        return {"emotion": "fluent", "speed": base_speed, "pause_after_ms": 130, "intensity": "medium"}
     if scene_purpose == "cta":
-        return {"emotion": "calm", "speed": max(base_speed - 0.01, 0.9), "pause_after_ms": 300, "intensity": "medium_high"}
-    return {"emotion": "calm", "speed": base_speed, "pause_after_ms": 220, "intensity": "medium"}
+        return {"emotion": "calm", "speed": max(base_speed - 0.01, 0.96), "pause_after_ms": 150, "intensity": "medium_high"}
+    return {"emotion": "calm", "speed": min(base_speed + 0.01, 1.1), "pause_after_ms": 120, "intensity": "medium"}
 
 
 def main() -> int:
@@ -207,7 +222,9 @@ def main() -> int:
 
     raw_script = script_path.read_text(encoding="utf-8")
     cleaned_script = clean_markdown(raw_script)
-    base_speed = float(target_profile.get("speed", 1.0))
+    delivery_profile = str(target_profile.get("delivery_profile") or "tight_explanatory")
+    default_base_speed = DEFAULT_TIGHT_BASE_SPEED if delivery_profile == "tight_explanatory" else 1.0
+    base_speed = float(target_profile.get("speed", default_base_speed))
     voice_name = target_profile.get("voice_name") or "Chinese (Mandarin)_Reliable_Executive"
     segments = segment_blocks(cleaned_script, max_chars=72)
 
@@ -215,7 +232,7 @@ def main() -> int:
     total = len(segments)
     for index, segment in enumerate(segments):
         scene_purpose = detect_scene_purpose(segment, index=index, total=total)
-        directives = purpose_directives(scene_purpose, base_speed)
+        directives = purpose_directives(scene_purpose, base_speed, delivery_profile)
         segment_payload.append(
             {
                 "index": index,
@@ -235,7 +252,9 @@ def main() -> int:
         "source_script": relative_to_project(script_path, project_root),
         "voice_strategy_defaults": {
             "primary_voice_id": voice_name,
+            "delivery_profile": delivery_profile,
             "base_speed": round(base_speed, 3),
+            "default_pause_profile": "tight" if delivery_profile == "tight_explanatory" else "measured",
             "default_emotion": "calm",
         },
         "segments": segment_payload,

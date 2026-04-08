@@ -2,7 +2,7 @@
 
 这套内置团队已经从基础的 `研究 -> 选题 -> 制作 -> 审核 -> 发布`，升级为更强调作品竞争力的闭环：
 
-`研究 -> 对标拆解 -> 选题 -> 角度设计 -> 制作 -> 竞争审校 -> 合规门禁 -> 发布 -> 复盘`
+`研究 -> 对标拆解 -> 选题 -> 角度设计 -> 剧本打磨 -> 制作 -> 竞争审校 -> 合规门禁 -> 发布 -> 复盘`
 
 整条流水线仍由一个总控 Butler 串起来，但现在不仅能“发出去”，还会追求“为什么这条内容有赢面”。
 
@@ -30,6 +30,7 @@
 | `benchmark-analyst` | 对标拆解 | 拆头部内容的钩子、结构、证据、视觉与互动模式 |
 | `topic-strategist` | 选题 | 选题池、优先级、内容日历、单条 brief |
 | `angle-designer` | 角度设计 | 生成高胜率切入角度、钩子假设、证明路径与评论诱因 |
+| `script-doctor` | 剧本打磨 | 基于优秀参考稿件沉淀写稿打法包、rewrite 契约和 delegate brief |
 | `content-producer` | 制作 | 标题、脚本、图文、口播、素材清单、平台改写 |
 | `video-production-director` | 视频生产总导演 | 把视频 brief 推进成完整成片包，负责母稿、后期装配与渲染验证 |
 | `competitive-reviewer` | 竞争审校 | 评估作品和平台前 10% 内容相比靠什么赢，哪里还不够强 |
@@ -48,6 +49,7 @@
 - `content-research`
 - `benchmark-analysis`
 - `reference-video-ingest`
+- `script-polishing`
 - `topic-selection`
 - `angle-design`
 - `content-production`
@@ -84,6 +86,8 @@
 3. 如果目标平台包含小红书，先让 Butler 产出账号定位、内容支柱、图文/短视频配比和评论区运营简报
 4. Butler 会按阶段调度 specialist，并在项目目录里逐步沉淀研究、对标、角度、内容、审核、发布和复盘产物
 4.1. 如果已经拿到可直接拆的参考视频 URL / BV 号，先运行 `python3 extensions/skills/reference-video-ingest/scripts/ingest_reference_video.py --project-root data/media-ops/<content-id> --source-url <video-url>`，把 transcript artifacts 沉淀到 `research/`
+4.2. 如果参考视频库已经积累到可用规模，再运行 `python3 extensions/skills/script-polishing/scripts/build_reference_script_patterns.py --project-root data/media-ops/<content-id>`，把优秀稿件的写稿打法沉淀成 `benchmarks/reference-script-patterns.json`
+4.3. 如果要重新做 B 站 backlog，不要直接口头列题。先写 `planning/topic-pool.json` 或共享 strategy file，再运行 `python3 extensions/skills/topic-selection/scripts/build_topic_backlog.py --project-root data/media-ops/<content-id> --strategy-file data/media-ops/_strategy/<strategy>.json`，把“候选题 -> 参考信号 -> 打分 -> 去重 -> selected topic”落成 `planning/topic-selection.json`
 5. 如果你已经配置了上传环境与账号状态，发布阶段会优先调用现有 upload skills
 6. 如果中长视频需要自动找外部素材并把获批片段沉淀到生产链，运行 `/media-source-footage data/media-ops/<content-id> --download-approved`
 7. 如果项目里已有图卡、封面或其它 SVG 资产，先运行 `python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py --project-root data/media-ops/<content-id> --include-root-assets`，统一导出 PNG，而不是人工逐张处理
@@ -118,7 +122,11 @@
    - `benchmarks/bilibili-hook-patterns.json`
    - `angles/attention-structure-template.json`
    - `angles/follow-conversion-hooks.json`
+2.0. 在进入 angle 之前，优先让 `topic-selection` 先把候选池写成 `planning/topic-pool.json`，并把最近已做题目、参考视频标题信号和 `proof_handle / visual_handle` 一起纳入去重逻辑，避免连续两条只是在复述同一个母题
 2.1. 如果 benchmark 阶段已经拿到参考视频 URL / BV 号，优先补 `research/reference-video-metadata.json`、`research/reference-transcript.srt` 和 `research/reference-transcript.md`，再做模式拆解
+2.2. 如果参考视频库已经积累到可用规模，再让 `script-doctor` 或 `script-polishing` 补：
+   - `benchmarks/reference-script-patterns.json`
+   - `content/script-polish-packet.json`
 3. 如果是中长视频，优先用 `licensed-footage-sourcing` 规划网上合法可用片段，再进入素材策略
 4. `video-asset-planning` 先做素材策略和生成预算门禁，并补齐：
    - `assets/scene-asset-plan.json`

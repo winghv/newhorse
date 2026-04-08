@@ -14,6 +14,7 @@ class TestListSkills:
         assert "content-research" in skill_ids
         assert "benchmark-analysis" in skill_ids
         assert "reference-video-ingest" in skill_ids
+        assert "script-polishing" in skill_ids
         assert "angle-design" in skill_ids
         assert "competitive-review" in skill_ids
         assert "multi-platform-publishing" in skill_ids

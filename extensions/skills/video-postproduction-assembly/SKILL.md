@@ -41,7 +41,7 @@ version: 1.0.0
    - `review_only`
 3. 如果已有 rough cut 且主要缺口只是正式旁白与字幕，优先考虑 `retime_existing_cut`。
 4. 如果旁白重写导致章节顺序、停顿或证据镜头变化过大，改走 `rebuild_timeline`，不要盲目压缩旧 cut。
-5. 缺字幕时，先从 `voiceover-segments.json` + 已生成音频自动产出 `subtitle_draft`。
+5. 缺字幕或字幕早于最新口播时，先从 `voiceover-segments.json` + 已生成音频自动重建 `subtitle_draft`。
 6. 如果是 `rebuild_timeline` 且没有 rough cut，先自动生成 `auto-base-cut.mp4`，再进入最终 render。
 7. 生成 `render_plan.json`，至少包含：
    - `workspace_root`
@@ -59,6 +59,8 @@ version: 1.0.0
    - `subtitle_quality_report_output`
    - `scene_assembly_report_output`
    - 如果是 B 站中视频，优先把前 30 秒 hook BGM 和关键结构节点 SFX 也写进 `mix`
+   - B 站知识向中视频默认使用 `bilingual_hardsub`，字幕按“中文在上、英文在下”烧录，不再默认单语硬字幕
+   - 场景主画面默认禁止纯文字卡片；文字只能作为覆盖层打在图片或视频底材上，若只有 `graphics-card` 兜底，应在装配报告里标成 `revise`
 8. 如果是“已有视频 + 新旁白 + 字幕”的装配场景，优先先落 plan，再执行本 skill 自带脚本：
 
 ```bash
@@ -120,7 +122,7 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 
 - `scripts/build_render_plan.py`
   - 从内容包自动推导 `source_video`、`voiceover_audio`、`subtitles`、`output_video`
-  - 缺字幕时自动调用 `build_subtitles_from_segments.py`
+  - 缺字幕或字幕早于最新口播时自动调用 `build_subtitles_from_segments.py`
   - 缺 `subtitle-style-pack.json` 时自动调用 `build_subtitle_style_pack.py`
   - 缺 `audio-cue-sheet.json` 时自动调用 `build_audio_cue_sheet.py`
   - 缺 `scene-manifest.json` 时自动调用 `build_scene_manifest.py`
@@ -142,6 +144,8 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
   - 自动产出 `subtitle-quality-report.json`
   - 自动产出 `scene-assembly-report.json`
   - 自动检查 freeze/static、duration alignment、字幕交付方式、subtitle alignment drift、sound design 落地状态，以及 scene/transition/fx 计划是否齐全
+  - 对启用了双语字幕要求的项目，检查字幕是否真正交付成双行中英对照
+  - 检查 `scene-manifest.json` 是否仍把纯文字卡片当成主画面，避免装配层悄悄退化回旧模板
 
 其中 `scripts/render_narrated_cut.py` 适用于这类确定性场景：
 

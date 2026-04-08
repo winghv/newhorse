@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,20 @@ def make_quality_gate_package(project_root: Path, *, visual_status: str = "pass"
     write_json(project_root / "content" / "postproduction" / "emphasis-fx-plan.json", {"scene_fx": []})
     write_json(project_root / "review" / "scene-assembly-report.json", {"status": "pass"})
     write_json(project_root / "assets" / "generation-budget.json", {"approved_generation_slots": []})
+    (project_root / "content" / "postproduction" / "voice.mp3").write_bytes(b"voice")
+    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\nhello\n",
+        encoding="utf-8",
+    )
+    write_json(
+        project_root / "content" / "postproduction" / "voiceover-profile.json",
+        {
+            "render_targets": {
+                "voiceover_audio": "content/postproduction/voice.mp3",
+                "subtitle_draft": "content/postproduction/subtitles.srt",
+            }
+        },
+    )
 
 
 def test_build_workflow_quality_gate_reports_passing_statuses(tmp_path: Path) -> None:
@@ -89,3 +104,33 @@ def test_build_workflow_quality_gate_marks_revise_dimension_when_visual_diversit
     gate = json.loads((project_root / "review" / "workflow-quality-gate.json").read_text(encoding="utf-8"))
     assert gate["overall_status"] == "revise"
     assert "visual_diversity_status" in gate["revise_dimensions"]
+
+
+def test_build_workflow_quality_gate_marks_revise_when_subtitle_is_stale(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "media-ops-orchestration"
+        / "scripts"
+        / "build_workflow_quality_gate.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-03-31-quality-stale-subtitle"
+    make_quality_gate_package(project_root)
+
+    subtitle_path = project_root / "content" / "postproduction" / "subtitles.srt"
+    voice_path = project_root / "content" / "postproduction" / "voice.mp3"
+    segments_path = project_root / "content" / "postproduction" / "voiceover-segments.json"
+    os.utime(subtitle_path, (1_700_000_000, 1_700_000_000))
+    os.utime(voice_path, (1_700_000_100, 1_700_000_100))
+    os.utime(segments_path, (1_700_000_100, 1_700_000_100))
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    gate = json.loads((project_root / "review" / "workflow-quality-gate.json").read_text(encoding="utf-8"))
+    subtitle_dimension = gate["dimensions"]["subtitle_quality_status"]
+    assert gate["overall_status"] == "revise"
+    assert "subtitle_quality_status" in gate["revise_dimensions"]
+    assert subtitle_dimension["status"] == "revise"
+    assert "subtitle_needs_regeneration_from_latest_voiceover" in subtitle_dimension["reasons"]

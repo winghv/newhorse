@@ -87,6 +87,27 @@ def relative_to(path: Path | None, root: Path) -> str | None:
         return str(path.resolve())
 
 
+def resolve_candidate(root: Path, raw_path: str | None) -> Path | None:
+    if not raw_path:
+        return None
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return candidate.resolve()
+
+
+def is_up_to_date(target: Path | None, dependencies: list[Path | None]) -> bool:
+    if target is None or not target.exists():
+        return False
+    target_mtime = target.stat().st_mtime
+    for dependency in dependencies:
+        if dependency is None or not dependency.exists():
+            continue
+        if target_mtime + 1e-6 < dependency.stat().st_mtime:
+            return False
+    return True
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -143,6 +164,10 @@ def build_dimension_statuses(project_root: Path, packet: dict[str, Any]) -> dict
         project_root / "content" / "postproduction" / "voiceover-segments.json",
     ]
     voice_segments = load_json(voice_paths[-1]) if voice_paths[-1].exists() else {}
+    voiceover_profile = load_json(voice_paths[1])
+    render_targets = voiceover_profile.get("render_targets") if isinstance(voiceover_profile.get("render_targets"), dict) else {}
+    voiceover_audio_path = resolve_candidate(project_root, render_targets.get("voiceover_audio"))
+    subtitle_path = resolve_candidate(project_root, render_targets.get("subtitle_draft"))
     voice_status = "pass"
     if is_bilibili_midform:
         if any(not path.exists() for path in voice_paths):
@@ -154,7 +179,18 @@ def build_dimension_statuses(project_root: Path, packet: dict[str, Any]) -> dict
 
     subtitle_quality_path = project_root / "review" / "subtitle-quality-report.json"
     subtitle_quality = load_json(subtitle_quality_path)
+    subtitle_reasons: list[str] = []
     subtitle_status = str(subtitle_quality.get("status") or ("revise" if is_bilibili_midform else "not_applicable"))
+    if is_bilibili_midform and not subtitle_path:
+        subtitle_status = "revise"
+        subtitle_reasons.append("subtitle_render_target_missing")
+    if is_bilibili_midform and subtitle_path and not subtitle_path.exists():
+        subtitle_status = "revise"
+        subtitle_reasons.append("subtitle_file_missing")
+    if is_bilibili_midform and subtitle_path and subtitle_path.exists():
+        if not is_up_to_date(subtitle_path, [voiceover_audio_path, voice_paths[-1]]):
+            subtitle_status = "revise"
+            subtitle_reasons.append("subtitle_needs_regeneration_from_latest_voiceover")
 
     visual_diversity_path = project_root / "assets" / "visual-diversity-report.json"
     visual_diversity = load_json(visual_diversity_path)
@@ -207,8 +243,9 @@ def build_dimension_statuses(project_root: Path, packet: dict[str, Any]) -> dict
             key="subtitle_quality_status",
             applicable=is_bilibili_midform,
             status=subtitle_status if is_bilibili_midform else "not_applicable",
-            artifact_paths=[subtitle_quality_path],
+            artifact_paths=[subtitle_quality_path] + [path for path in [subtitle_path, voiceover_audio_path, voice_paths[-1]] if path is not None],
             project_root=project_root,
+            reasons=subtitle_reasons,
         ),
         "visual_diversity_status": make_dimension(
             key="visual_diversity_status",

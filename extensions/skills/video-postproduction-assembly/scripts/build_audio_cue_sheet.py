@@ -12,6 +12,8 @@ from typing import Any
 
 
 HOOK_BGM_SECONDS = 18.0
+HOOK_LAYER_MIN_SECONDS = 12.0
+OPENING_SFX_WINDOW_SECONDS = 35.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -131,27 +133,62 @@ def beat_window(start_seconds: float, end_seconds: float, *, fallback_end: float
     return round(start, 3), round(max(end, start), 3)
 
 
+def load_audio_library(project_root: Path) -> dict[str, dict[str, Any]]:
+    payload = load_json(project_root / "assets" / "audio" / "audio-library.json")
+    tracks = payload.get("tracks") if isinstance(payload.get("tracks"), dict) else {}
+    return {
+        str(role): config
+        for role, config in tracks.items()
+        if isinstance(role, str) and isinstance(config, dict)
+    }
+
+
+def bgm_track_config(
+    role: str,
+    *,
+    audio_library: dict[str, dict[str, Any]],
+    fallback_path: str,
+    fallback_gain_db: float,
+    default_fade_in_seconds: float,
+    default_fade_out_seconds: float,
+) -> dict[str, Any]:
+    override = audio_library.get(role, {})
+    path_value = str(override.get("path") or fallback_path)
+    return {
+        "path": path_value,
+        "role": role,
+        "gain_db": float(override.get("gain_db", fallback_gain_db)),
+        "loop": bool(override.get("loop", True)),
+        "fade_in_seconds": float(override.get("fade_in_seconds", default_fade_in_seconds)),
+        "fade_out_seconds": float(override.get("fade_out_seconds", default_fade_out_seconds)),
+    }
+
+
 def build_bgm_tracks(
     *,
     beat_sheet: list[dict[str, Any]],
     duration_seconds: float,
     bgm_target_db: float,
     root: Path,
+    audio_library: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     techno_path = str((root / "remotion" / "public" / "bgm-techno.mp3").resolve())
     urban_path = str((root / "remotion" / "public" / "bgm-deep-urban.mp3").resolve())
 
     if not beat_sheet:
+        hook_track = bgm_track_config(
+            "hook_bed",
+            audio_library=audio_library,
+            fallback_path=techno_path,
+            fallback_gain_db=max(float(bgm_target_db), -24.0),
+            default_fade_in_seconds=0.18,
+            default_fade_out_seconds=0.6,
+        )
         return [
             {
-                "path": techno_path,
-                "role": "hook_bed",
+                **hook_track,
                 "start_seconds": 0.0,
                 "end_seconds": min(HOOK_BGM_SECONDS, round(duration_seconds, 3)),
-                "gain_db": max(float(bgm_target_db), -24.0),
-                "loop": True,
-                "fade_in_seconds": 0.18,
-                "fade_out_seconds": 0.6,
             }
         ]
 
@@ -163,78 +200,143 @@ def build_bgm_tracks(
         combined = f"{beat_name} {purpose}"
 
         if "hook" in beat_name:
-            start, end = beat_window(start_seconds, min(end_seconds, HOOK_BGM_SECONDS), fallback_end=HOOK_BGM_SECONDS)
+            hook_end_seconds = end_seconds if "bridge_bed" in audio_library else min(end_seconds, HOOK_BGM_SECONDS)
+            start, end = beat_window(start_seconds, hook_end_seconds, fallback_end=HOOK_BGM_SECONDS)
+            hook_track = bgm_track_config(
+                "hook_bed",
+                audio_library=audio_library,
+                fallback_path=techno_path,
+                fallback_gain_db=max(float(bgm_target_db), -24.0),
+                default_fade_in_seconds=0.12,
+                default_fade_out_seconds=0.45,
+            )
             tracks.append(
                 {
-                    "path": techno_path,
-                    "role": "hook_bed",
+                    **hook_track,
                     "start_seconds": start,
                     "end_seconds": end,
-                    "gain_db": max(float(bgm_target_db), -24.0),
-                    "loop": True,
-                    "fade_in_seconds": 0.12,
-                    "fade_out_seconds": 0.45,
                 }
             )
+            hook_duration = end - start
+            if hook_duration >= HOOK_LAYER_MIN_SECONDS and "bridge_bed" in audio_library:
+                bridge_layer = bgm_track_config(
+                    "bridge_bed",
+                    audio_library=audio_library,
+                    fallback_path=urban_path,
+                    fallback_gain_db=float(hook_track["gain_db"]) - 4.0,
+                    default_fade_in_seconds=0.5,
+                    default_fade_out_seconds=0.7,
+                )
+                tracks.append(
+                    {
+                        **bridge_layer,
+                        "role": "hook_layer_bed",
+                        "start_seconds": round(start + max(4.2, min(hook_duration * 0.22, 8.0)), 3),
+                        "end_seconds": end,
+                    }
+                )
             continue
 
         if any(keyword in combined for keyword in ("proof", "案例", "证明", "反转", "对照")):
             start, end = beat_window(start_seconds, end_seconds, fallback_end=min(start_seconds + 18.0, duration_seconds))
+            proof_track = bgm_track_config(
+                "proof_bed",
+                audio_library=audio_library,
+                fallback_path=urban_path,
+                fallback_gain_db=float(bgm_target_db) + 1.0,
+                default_fade_in_seconds=0.22,
+                default_fade_out_seconds=0.7,
+            )
             tracks.append(
                 {
-                    "path": urban_path,
-                    "role": "proof_bed",
+                    **proof_track,
                     "start_seconds": start,
                     "end_seconds": end,
-                    "gain_db": float(bgm_target_db) + 1.0,
-                    "loop": True,
-                    "fade_in_seconds": 0.22,
-                    "fade_out_seconds": 0.7,
                 }
             )
             continue
 
         if any(keyword in combined for keyword in ("framework", "框架", "模板", "步骤")):
             start, end = beat_window(start_seconds, end_seconds, fallback_end=min(start_seconds + 20.0, duration_seconds))
+            framework_track = bgm_track_config(
+                "framework_bed",
+                audio_library=audio_library,
+                fallback_path=urban_path,
+                fallback_gain_db=float(bgm_target_db) + 2.0,
+                default_fade_in_seconds=0.18,
+                default_fade_out_seconds=0.8,
+            )
             tracks.append(
                 {
-                    "path": urban_path,
-                    "role": "framework_bed",
+                    **framework_track,
                     "start_seconds": start,
                     "end_seconds": end,
-                    "gain_db": float(bgm_target_db) + 2.0,
-                    "loop": True,
-                    "fade_in_seconds": 0.18,
-                    "fade_out_seconds": 0.8,
                 }
             )
             continue
 
         if any(keyword in combined for keyword in ("action", "cta", "outro", "signal", "停手信号")):
             start, end = beat_window(start_seconds, end_seconds, fallback_end=min(start_seconds + 14.0, duration_seconds))
+            action_track = bgm_track_config(
+                "action_bed",
+                audio_library=audio_library,
+                fallback_path=urban_path,
+                fallback_gain_db=float(bgm_target_db) + 1.0,
+                default_fade_in_seconds=0.2,
+                default_fade_out_seconds=0.8,
+            )
             tracks.append(
                 {
-                    "path": urban_path,
-                    "role": "action_bed",
+                    **action_track,
                     "start_seconds": start,
                     "end_seconds": end,
-                    "gain_db": float(bgm_target_db) + 1.0,
-                    "loop": True,
-                    "fade_in_seconds": 0.2,
-                    "fade_out_seconds": 0.8,
                 }
             )
 
-    return tracks or [
+    if tracks:
+        sorted_tracks = sorted(tracks, key=lambda item: (float(item.get("start_seconds", 0.0)), float(item.get("end_seconds", 0.0))))
+        if "bridge_bed" not in audio_library:
+            return sorted_tracks
+        bridged_tracks: list[dict[str, Any]] = []
+        for index, track in enumerate(sorted_tracks):
+            bridged_tracks.append(track)
+            if index == len(sorted_tracks) - 1:
+                continue
+            current_end = float(track.get("end_seconds", 0.0))
+            next_start = float(sorted_tracks[index + 1].get("start_seconds", current_end))
+            gap_duration = next_start - current_end
+            if gap_duration < 18.0:
+                continue
+            bridge_track = bgm_track_config(
+                "bridge_bed",
+                audio_library=audio_library,
+                fallback_path=urban_path,
+                fallback_gain_db=float(bgm_target_db) - 1.0,
+                default_fade_in_seconds=0.35,
+                default_fade_out_seconds=1.0,
+            )
+            bridged_tracks.append(
+                {
+                    **bridge_track,
+                    "start_seconds": round(current_end, 3),
+                    "end_seconds": round(next_start, 3),
+                }
+            )
+        return sorted(bridged_tracks, key=lambda item: (float(item.get("start_seconds", 0.0)), float(item.get("end_seconds", 0.0))))
+
+    hook_track = bgm_track_config(
+        "hook_bed",
+        audio_library=audio_library,
+        fallback_path=techno_path,
+        fallback_gain_db=max(float(bgm_target_db), -24.0),
+        default_fade_in_seconds=0.18,
+        default_fade_out_seconds=0.6,
+    )
+    return [
         {
-            "path": techno_path,
-            "role": "hook_bed",
+            **hook_track,
             "start_seconds": 0.0,
             "end_seconds": min(HOOK_BGM_SECONDS, round(duration_seconds, 3)),
-            "gain_db": max(float(bgm_target_db), -24.0),
-            "loop": True,
-            "fade_in_seconds": 0.18,
-            "fade_out_seconds": 0.6,
         }
     ]
 
@@ -242,26 +344,53 @@ def build_bgm_tracks(
 def build_sfx_cues(beat_sheet: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cues: list[dict[str, Any]] = []
     for beat in beat_sheet:
-        start_seconds, _ = parse_time_range(str(beat.get("time_range") or ""))
+        start_seconds, end_seconds = parse_time_range(str(beat.get("time_range") or ""))
+        beat_duration = max(end_seconds - start_seconds, 0.0)
         beat_name = str(beat.get("beat") or "")
         purpose = str(beat.get("purpose") or "")
         text = f"{beat_name} {purpose}"
         if "hook" in beat_name:
             cues.append(
                 {
-                    "label": "hook_statement",
-                    "preset": "impact_hit",
+                    "label": "hook_braam",
+                    "preset": "braam_hit",
                     "start_seconds": round(start_seconds, 3),
-                    "gain_db": -6.5,
+                    "gain_db": -6.2,
                 }
             )
-            for burst_index, offset in enumerate((0.0, 0.34, 0.68), start=1):
+            cues.append(
+                {
+                    "label": "hook_statement",
+                    "preset": "sub_hit",
+                    "start_seconds": round(start_seconds, 3),
+                    "gain_db": -5.8,
+                }
+            )
+            if beat_duration >= 10.0:
                 cues.append(
                     {
-                        "label": f"typing_burst_hook_{burst_index}",
-                        "preset": "typing_burst",
-                        "start_seconds": round(start_seconds + offset, 3),
-                        "gain_db": -7.0,
+                        "label": "hook_turn_reveal",
+                        "preset": "reverse_suck",
+                        "start_seconds": round(start_seconds + min(8.2, beat_duration - 0.35), 3),
+                        "gain_db": -10.0,
+                    }
+                )
+            if beat_duration >= 12.0:
+                cues.append(
+                    {
+                        "label": "hook_turn_land",
+                        "preset": "sub_hit",
+                        "start_seconds": round(start_seconds + min(8.45, beat_duration - 0.1), 3),
+                        "gain_db": -6.9,
+                    }
+                )
+            if beat_duration >= 20.0:
+                cues.append(
+                    {
+                        "label": "hook_pressure_swell",
+                        "preset": "whoosh_riser",
+                        "start_seconds": round(start_seconds + min(21.4, beat_duration - 0.8), 3),
+                        "gain_db": -10.5,
                     }
                 )
         if any(keyword in text for keyword in ("framework", "框架")):
@@ -270,25 +399,16 @@ def build_sfx_cues(beat_sheet: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "label": "framework_reveal",
                     "preset": "whoosh_riser",
                     "start_seconds": round(start_seconds, 3),
-                    "gain_db": -8.5,
+                    "gain_db": -7.2,
                 }
             )
-            for burst_index, offset in enumerate((0.0, 0.42, 0.84), start=1):
-                cues.append(
-                    {
-                        "label": f"typing_burst_framework_{burst_index}",
-                        "preset": "typing_burst",
-                        "start_seconds": round(start_seconds + offset, 3),
-                        "gain_db": -8.0,
-                    }
-                )
         if any(keyword in text for keyword in ("停手信号", "signal", "action")):
             cues.append(
                 {
                     "label": "stop_signal_list",
-                    "preset": "impact_hit",
+                    "preset": "sub_hit",
                     "start_seconds": round(start_seconds, 3),
-                    "gain_db": -8.0,
+                    "gain_db": -6.2,
                 }
             )
     return cues
@@ -316,9 +436,99 @@ def build_ordinal_sfx_cues(subtitle_cues: list[dict[str, Any]]) -> list[dict[str
                     "label": label,
                     "preset": "ordinal_tick",
                     "start_seconds": round(float(cue.get("start_seconds", 0.0)), 3),
-                    "gain_db": -7.5,
+                    "gain_db": -6.4,
                 }
             )
+    return cues
+
+
+def build_opening_phrase_cues(
+    subtitle_cues: list[dict[str, Any]],
+    *,
+    beat_sheet: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not any("hook" in str(beat.get("beat") or "").lower() for beat in beat_sheet):
+        return []
+    opening_cues = [
+        cue
+        for cue in subtitle_cues
+        if float(cue.get("start_seconds", 0.0)) < OPENING_SFX_WINDOW_SECONDS
+    ]
+    if not opening_cues:
+        return []
+
+    cues: list[dict[str, Any]] = []
+    seen_starts: set[float] = set()
+
+    def append_once(*, label: str, preset: str, start_seconds: float, gain_db: float) -> None:
+        rounded_start = round(max(start_seconds, 0.0), 3)
+        if rounded_start in seen_starts:
+            return
+        seen_starts.add(rounded_start)
+        cues.append(
+            {
+                "label": label,
+                "preset": preset,
+                "start_seconds": rounded_start,
+                "gain_db": gain_db,
+            }
+        )
+
+    question_cue = next(
+        (
+            cue
+            for cue in opening_cues
+            if any(token in str(cue.get("text") or "") for token in ("？", "?"))
+        ),
+        None,
+    )
+    if question_cue is not None:
+        append_once(
+            label="opening_question_braam",
+            preset="braam_hit",
+            start_seconds=float(question_cue.get("start_seconds", 0.0)),
+            gain_db=-8.2,
+        )
+
+    reveal_cue = next(
+        (
+            cue
+            for cue in opening_cues
+            if any(token in str(cue.get("text") or "") for token in ("：", ":", "答案", "更扎心"))
+        ),
+        None,
+    )
+    if reveal_cue is not None:
+        reveal_start = float(reveal_cue.get("start_seconds", 0.0))
+        append_once(
+            label="opening_reveal_suck",
+            preset="reverse_suck",
+            start_seconds=max(reveal_start - 0.18, 0.0),
+            gain_db=-9.8,
+        )
+        append_once(
+            label="opening_reveal_stab",
+            preset="glitch_stab",
+            start_seconds=reveal_start,
+            gain_db=-8.4,
+        )
+
+    after_twenty_seconds_cue = next(
+        (
+            cue
+            for cue in opening_cues
+            if float(cue.get("start_seconds", 0.0)) >= 20.0
+        ),
+        None,
+    )
+    if after_twenty_seconds_cue is not None:
+        append_once(
+            label="opening_pressure_land",
+            preset="impact_hit",
+            start_seconds=float(after_twenty_seconds_cue.get("start_seconds", 0.0)),
+            gain_db=-8.0,
+        )
+
     return cues
 
 
@@ -337,11 +547,13 @@ def main() -> int:
     subtitle_draft = render_targets.get("subtitle_draft") if isinstance(render_targets.get("subtitle_draft"), str) else None
     subtitle_path = (project_root / subtitle_draft).resolve() if subtitle_draft else None
     subtitle_cues = parse_srt(subtitle_path)
+    audio_library = load_audio_library(project_root)
     bgm_tracks = build_bgm_tracks(
         beat_sheet=beat_sheet,
         duration_seconds=duration_seconds,
         bgm_target_db=float(mix_defaults.get("bgm_target_db", -30.0)),
         root=repo_root(),
+        audio_library=audio_library,
     )
 
     chapter_audio_beats = []
@@ -369,10 +581,15 @@ def main() -> int:
             "bg_sidechain_attack_ms": 15,
             "bg_sidechain_release_ms": 260,
             "sound_bed_gain_db": 0.0,
+            "sfx_stem_gain_db": 7.8,
         },
         "chapter_audio_beats": chapter_audio_beats,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    payload["sfx_cues"] = [
+        *payload["sfx_cues"],
+        *build_opening_phrase_cues(subtitle_cues, beat_sheet=beat_sheet),
+    ]
 
     output_path = (project_root / args.output).resolve()
     write_json(output_path, payload)

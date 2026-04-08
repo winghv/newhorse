@@ -16,11 +16,12 @@ version: 1.0.0
 2. 对标拆解
 3. 选题
 4. 角度设计
-5. 制作
-6. 竞争审校
-7. 合规审核
-8. 发布
-9. 复盘
+5. 剧本打磨
+6. 制作
+7. 竞争审校
+8. 合规审核
+9. 发布
+10. 复盘
 
 推荐先定义运行模式：
 
@@ -54,11 +55,13 @@ version: 1.0.0
 3. 研究阶段输出 `research brief`，同时给出 `benchmark candidates`。
 4. 对标阶段输出 `benchmark deck`、`pattern map` 和 `whitespace`。
 4.1. 如果目标平台是 Bilibili 中视频，再补 `benchmarks/bilibili-hook-patterns.json`，把开场留存、证明前置、收藏理由和关注桥结构化。
+4.2. 如果参考视频库已经具备多条 transcript，再补 `benchmarks/reference-script-patterns.json`，把参考稿件的写稿打法结构化。
 5. 选题阶段输出 `topic backlog` 和 `selected topic`。
 6. 角度设计阶段输出 `angle brief`、`hook hypotheses` 和 `proof plan`。
 6.1. 如果目标平台是 Bilibili 中视频，再补 `angles/attention-structure-template.json` 和 `angles/follow-conversion-hooks.json`。
-7. 制作阶段输出 `content packet`，包括平台版本、钩子备选和素材需求。
-8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`voice-performance-plan.json`、`subtitle-style-pack.json`、`audio-cue-sheet.json`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。缺字幕时默认自动从 `voiceover-segments.json` 生成 `subtitle_draft`。
+7. 剧本打磨阶段输出 `content/script-polish-packet.json`，把 hard constraints、freedom zones、section blueprint、borrowed plays 和 rewrite loop 结构化。
+8. 制作阶段输出 `content packet`，包括平台版本、钩子备选和素材需求。
+8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`voice-performance-plan.json`、`subtitle-style-pack.json`、`audio-cue-sheet.json`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。语音/字幕默认按固定顺序推进：先 `build_tts_handoff.py`，再用 `generate_voiceover_with_timing.py` 生成最终口播音频，再从 `voiceover-segments.json + 最终音频 + segment_*.mp3` 生成 `subtitle_draft`，最后进入 render。
 9. 如果是解释型中长视频，还必须补 `planning/cognitive-punch-gate.json` 和 `sources/chapter-coverage-report.json`。
 10. 竞争审校阶段输出 `competitive scorecard`、`score_by_dimension`、`total_score`，结论为 `pass / revise / block`。
 10.1. 如果目标平台是 Bilibili 中视频，再补 `review/opening-scorecard.json`。
@@ -71,7 +74,7 @@ version: 1.0.0
 16.1. 对准备进入发布的中视频，先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_workflow_quality_gate.py --project-root data/media-ops/<content-id>`，生成：
    - `review/workflow-quality-gate.json`
    - `review/upgrade-status-board.json`
-17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、MiniMax 镜头预算、scene manifest / transition / emphasis 设计、字幕生成、基础时间线重建和 render workflow 整理成一份执行计划。
+17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、MiniMax 镜头预算、TTS handoff、最终口播生成、基于口播的字幕重生成、scene manifest / transition / emphasis 设计、基础时间线重建和 render workflow 整理成一份执行计划。
 
 ## Supervisor-Led Delegation Contract
 
@@ -79,7 +82,7 @@ version: 1.0.0
 
 默认规则：
 
-- `research / benchmark / topic / angle / production / competitive review / compliance / publish / retrospective` 都优先通过 specialist 推进
+- `research / benchmark / topic / angle / script development / production / competitive review / compliance / publish / retrospective` 都优先通过 specialist 推进
 - 主控自己只负责：
   - 定义阶段目标
   - 压缩上下文
@@ -96,6 +99,7 @@ version: 1.0.0
 - `benchmark analysis` -> `benchmark-analyst`
 - `topic selection` -> `topic-strategist`
 - `angle design` -> `angle-designer`
+- `script development` -> `script-doctor`
 - `production (video)` -> `video-production-director`
 - `production (note/copy)` -> `content-producer`
 - `competitive review` -> `competitive-reviewer`
@@ -136,9 +140,11 @@ version: 1.0.0
 - `core_angle`: 核心观点或切入角度
 - `evidence`: 关键事实、案例、素材来源
 - `benchmark_refs`: 关键对标样本
+- `reference_script_patterns`: 从参考视频稿件抽出的可复用写稿打法
 - `hook_hypotheses`: 预期有效的开头与互动触发
 - `attention_structure_template`: 对 Bilibili 中视频说明前 `30` 秒如何留人、何时前置第一层证明、结尾如何桥接
 - `follow_conversion_hooks`: 对 Bilibili 中视频说明评论诱因、收藏理由和下一条桥接
+- `script_polish_packet`: 项目级写稿契约，包含 hard constraints、freedom zones、section blueprint 和 rewrite loop
 - `deliverable_type`: 图文、短视频或中长视频
 - `duration_target`: 目标时长
 - `aspect_ratio`: 目标画幅

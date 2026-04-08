@@ -40,6 +40,7 @@ version: 1.1.0
 5. 再选择基础产出 skill：
    - 短视频：`short-video-production`
    - 中长视频：`midlong-video-production`
+5.1. 如果是知识/认知类中长视频，先走 `script-polishing`，把参考视频稿件沉淀成 `benchmarks/reference-script-patterns.json` 和 `content/script-polish-packet.json`，再进入母稿。
 6. 如果是解释型中长视频，先补 `planning/cognitive-punch-gate.json`，至少回答误区、风险、机制、场景和可带走模板。
 7. 视频母稿完成后，再走 `minimax-narration-postproduction`，补齐旁白、字幕草案、混音说明和交付清单。
 8. 再按最终平台生成包装元数据和上传素材说明：
@@ -78,6 +79,7 @@ version: 1.1.0
 - `master_script`
 - `cognitive_punch_gate`
 - `hook_variants`
+- `script_polish_packet`
 - `beat_sheet`
 - `narration_script`
 - `subtitle_source`
@@ -124,6 +126,7 @@ version: 1.1.0
 - 小红书图文不是长文切片，必须先明确首图承诺和页序
 - 短视频先写前 3 秒，再写主体
 - 中长视频先写开场承诺、章节推进和切条点，再补完整细节
+- 知识/认知类中长视频先把参考稿件打法结构化，再写自己的母稿
 - 解释型中长视频在进入配音前，必须先过 `cognitive punch gate`
 - 解释型视频默认要交付可执行的旁白和字幕，不允许只留“后面再补”
 - 中长视频默认优先使用合法来源的网上片段做 B-roll 和气氛镜头，再考虑 AI 视频

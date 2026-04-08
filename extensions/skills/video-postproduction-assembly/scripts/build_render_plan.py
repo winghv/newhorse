@@ -16,13 +16,16 @@ DEFAULT_SUBTITLE_STYLE = (
     "FontName=Arial Unicode MS,FontSize=18,PrimaryColour=&H00FFFFFF,"
     "OutlineColour=&H00000000,Outline=2,Shadow=0,MarginV=32"
 )
+DEFAULT_RENDER_CRF = 20
+DEFAULT_RENDER_PRESET = "medium"
+REBUILD_TIMELINE_TARGET_FPS = 60
 NARRATED_KEYWORDS = ("narrated", "subtitle", "subtitles", "voiceover", "dubbed", "tts")
 SOUND_DESIGN_KEYWORDS = (
     {
         "label": "hook_statement",
         "keywords": ("什么都知道，就是不敢决定", "不敢决定"),
-        "preset": "impact_hit",
-        "gain_db": -14.0,
+        "preset": "braam_hit",
+        "gain_db": -8.0,
         "min_start_seconds": 0.0,
         "max_start_seconds": 30.0,
     },
@@ -30,14 +33,14 @@ SOUND_DESIGN_KEYWORDS = (
         "label": "framework_reveal",
         "keywords": ("四步框架",),
         "preset": "whoosh_riser",
-        "gain_db": -17.0,
+        "gain_db": -9.2,
         "min_start_seconds": 60.0,
     },
     {
         "label": "stop_signal_list",
         "keywords": ("三个停手信号", "停手信号"),
-        "preset": "impact_hit",
-        "gain_db": -15.0,
+        "preset": "sub_hit",
+        "gain_db": -8.6,
         "min_start_seconds": 90.0,
     },
 )
@@ -85,6 +88,18 @@ def find_first_existing(paths: list[Path | None]) -> Path | None:
         if path is not None and path.exists():
             return path
     return None
+
+
+def is_up_to_date(target: Path | None, dependencies: list[Path | None]) -> bool:
+    if target is None or not target.exists():
+        return False
+    target_mtime = target.stat().st_mtime
+    for dependency in dependencies:
+        if dependency is None or not dependency.exists():
+            continue
+        if target_mtime + 1e-6 < dependency.stat().st_mtime:
+            return False
+    return True
 
 
 def sanitize_label(value: str) -> str:
@@ -226,16 +241,81 @@ def build_sound_design_mix(
     }
 
 
-def build_typewriter_sfx_cues(project_root: Path, existing_sfx_cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    auto_base_cut_plan = load_json(project_root / "content" / "postproduction" / "auto-base-cut-plan.json")
+def matching_auto_base_cut_plan(project_root: Path, source_video: Path | None) -> Path:
+    postproduction_dir = project_root / "content" / "postproduction"
+    default_plan = postproduction_dir / "auto-base-cut-plan.json"
+    if source_video is None:
+        return default_plan
+
+    try:
+        relative_source = source_video.resolve().relative_to(postproduction_dir.resolve())
+    except ValueError:
+        return default_plan
+
+    stem = relative_source.stem
+    if stem == "auto-base-cut":
+        return default_plan
+    if stem.startswith("auto-base-cut-"):
+        return postproduction_dir / f"auto-base-cut-plan-{stem[len('auto-base-cut-'): ]}.json"
+    return default_plan
+
+
+def build_typewriter_sfx_cues(
+    project_root: Path,
+    existing_sfx_cues: list[dict[str, Any]],
+    *,
+    source_video: Path | None,
+) -> list[dict[str, Any]]:
+    auto_base_cut_plan = load_json(matching_auto_base_cut_plan(project_root, source_video))
     sequence = auto_base_cut_plan.get("sequence") if isinstance(auto_base_cut_plan.get("sequence"), list) else []
     if not sequence:
         return []
 
+    def append_typewriter_cluster(
+        *,
+        label_root: str,
+        cue_start: float,
+        cue_duration: float,
+        cue_text: str,
+        extra_cues: list[dict[str, Any]],
+    ) -> None:
+        text_units = re.findall(r"[0-9A-Za-z\u4e00-\u9fff]", cue_text)
+        if not text_units:
+            text_units = [char for char in cue_text if not char.isspace()]
+        if not text_units:
+            return
+
+        if len(text_units) > 24:
+            step = (len(text_units) - 1) / 23
+            sampled_indexes = sorted({round(index * step) for index in range(24)})
+            text_units = [text_units[index] for index in sampled_indexes]
+
+        typing_window = min(max(cue_duration * 0.98, 0.42), max(len(text_units) * 0.085, 0.42))
+        if len(text_units) == 1:
+            offsets = [0.0]
+        else:
+            hit_interval = typing_window / max(len(text_units) - 1, 1)
+            offsets = [round(index * hit_interval, 3) for index in range(len(text_units))]
+
+        for index, offset in enumerate(offsets, start=1):
+            is_tail = index == len(offsets)
+            preset = "typewriter_key_tail" if is_tail and len(offsets) > 2 else ("typewriter_key_soft" if index % 3 == 2 else "typewriter_key")
+            gain_db = -4.0 if preset == "typewriter_key" else (-4.8 if preset == "typewriter_key_soft" else -3.8)
+            extra_cues.append(
+                {
+                    "label": f"typewriter_{label_root}_{preset}_{index}",
+                    "preset": preset,
+                    "start_seconds": round(max(cue_start + offset, 0.0), 3),
+                    "gain_db": gain_db,
+                }
+            )
+
     existing_starts = [
         float(cue.get("start_seconds", 0.0))
         for cue in existing_sfx_cues
-        if isinstance(cue, dict) and str(cue.get("preset") or "") in {"typing_burst", "impact_hit"}
+        if isinstance(cue, dict)
+        and str(cue.get("preset") or "")
+        in {"typewriter_key", "typewriter_key_soft", "typewriter_key_tail"}
     ]
     extra_cues: list[dict[str, Any]] = []
     for item in sequence:
@@ -251,15 +331,17 @@ def build_typewriter_sfx_cues(project_root: Path, existing_sfx_cues: list[dict[s
         if any(abs(cue_start - existing_start) <= 0.9 for existing_start in existing_starts):
             continue
         label_root = sanitize_label(text[:24])
-        for burst_index, offset in enumerate((0.0, 0.22), start=1):
-            extra_cues.append(
-                {
-                    "label": f"typewriter_{label_root}_{burst_index}",
-                    "preset": "typing_burst",
-                    "start_seconds": round(cue_start + offset, 3),
-                    "gain_db": -5.0,
-                }
-            )
+        cue_duration = max(
+            float(item.get("typewriter_duration_seconds") or 0.0),
+            min(max(len(text) / 16.0, 0.4), 1.1),
+        )
+        append_typewriter_cluster(
+            label_root=label_root,
+            cue_start=cue_start,
+            cue_duration=cue_duration,
+            cue_text=text,
+            extra_cues=extra_cues,
+        )
         existing_starts.append(cue_start)
     return extra_cues
 
@@ -438,6 +520,12 @@ def ensure_subtitles(
     requested_subtitles: str | None,
     render_targets: dict[str, Any],
 ) -> Path | None:
+    output_path = resolve_candidate(project_root, requested_subtitles) or resolve_candidate(
+        project_root, render_targets.get("subtitle_draft")
+    )
+    if output_path is None:
+        output_path = (project_root / "content" / "postproduction" / "subtitles.srt").resolve()
+
     existing = find_first_existing(
         [
             existing_path(project_root, requested_subtitles),
@@ -445,14 +533,10 @@ def ensure_subtitles(
             *sorted((project_root / "content" / "postproduction").glob("*.srt")),
         ]
     )
-    if existing is not None:
+    voiceover_audio = existing_path(project_root, render_targets.get("voiceover_audio"))
+    segments_file = existing_path(project_root, render_targets.get("segments_file"))
+    if existing is not None and is_up_to_date(existing, [voiceover_audio, segments_file]):
         return existing
-
-    output_path = resolve_candidate(project_root, requested_subtitles) or resolve_candidate(
-        project_root, render_targets.get("subtitle_draft")
-    )
-    if output_path is None:
-        output_path = (project_root / "content" / "postproduction" / "subtitles.srt").resolve()
 
     subtitle_builder = (
         repo_root()
@@ -611,6 +695,12 @@ def ensure_source_video(
             relative_to_root(voiceover_audio, project_root),
             "--output-video",
             relative_to_root(output_path, project_root),
+            "--fps",
+            str(REBUILD_TIMELINE_TARGET_FPS),
+            "--crf",
+            str(DEFAULT_RENDER_CRF),
+            "--preset",
+            DEFAULT_RENDER_PRESET,
         ]
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
@@ -638,6 +728,12 @@ def ensure_source_video(
             relative_to_root(voiceover_audio, project_root),
             "--output-video",
             relative_to_root(output_path, project_root),
+            "--fps",
+            str(REBUILD_TIMELINE_TARGET_FPS),
+            "--crf",
+            str(DEFAULT_RENDER_CRF),
+            "--preset",
+            DEFAULT_RENDER_PRESET,
         ]
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
@@ -742,7 +838,7 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         mix_plan.update(ducking_rules)
     bgm_tracks = audio_cue_sheet.get("bgm_tracks") if isinstance(audio_cue_sheet.get("bgm_tracks"), list) else []
     sfx_cues = audio_cue_sheet.get("sfx_cues") if isinstance(audio_cue_sheet.get("sfx_cues"), list) else []
-    typewriter_sfx_cues = build_typewriter_sfx_cues(project_root, sfx_cues)
+    typewriter_sfx_cues = build_typewriter_sfx_cues(project_root, sfx_cues, source_video=source_video)
     if typewriter_sfx_cues:
         sfx_cues = [*sfx_cues, *typewriter_sfx_cues]
     if bgm_tracks or sfx_cues or ducking_rules:
@@ -778,7 +874,12 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
             "mode": "auto_match_voiceover",
             "allow_slowdown": args.allow_slowdown,
             "max_speedup": args.max_speedup,
+            "target_fps": REBUILD_TIMELINE_TARGET_FPS if assembly_strategy == "rebuild_timeline" else None,
         },
+        "video_codec": "libx264",
+        "audio_codec": "aac",
+        "crf": DEFAULT_RENDER_CRF if assembly_strategy == "rebuild_timeline" else 21,
+        "preset": DEFAULT_RENDER_PRESET if assembly_strategy == "rebuild_timeline" else "veryfast",
         "qa": {
             "freeze_threshold_seconds": 2.5,
             "max_static_hold_seconds": 8.0 if assembly_strategy == "rebuild_timeline" else 2.5,

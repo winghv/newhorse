@@ -32,6 +32,7 @@ SPECIALIST_AGENTS = {
     "benchmark-analyst",
     "topic-strategist",
     "angle-designer",
+    "script-doctor",
     "content-producer",
     "video-production-director",
     "competitive-reviewer",
@@ -153,7 +154,7 @@ def create_delegation_tool(project_id: str, on_event: Optional[Callable[[dict], 
         "delegate_task",
         "Delegate a task to a specialist agent on your team. "
         "Available agents: planner, coder, researcher, reviewer, writer, "
-        "trend-researcher, benchmark-analyst, topic-strategist, angle-designer, "
+        "trend-researcher, benchmark-analyst, topic-strategist, angle-designer, script-doctor, "
         "content-producer, video-production-director, competitive-reviewer, compliance-reviewer, "
         "distribution-operator, performance-analyst. "
         "The specialist will execute the task in the project workspace and return results.",

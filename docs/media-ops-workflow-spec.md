@@ -41,7 +41,7 @@
 
 默认要求：
 
-- `research / benchmark / topic / angle / production / competitive review / compliance / publish / retrospective` 都应通过 specialist 推进
+- `research / benchmark / topic / angle / script development / production / competitive review / compliance / publish / retrospective` 都应通过 specialist 推进
 - 主控自己只负责：
   - 确认阶段目标
   - 压缩上下文
@@ -58,6 +58,7 @@
 - `benchmark analysis` -> `benchmark-analyst`
 - `topic selection` -> `topic-strategist`
 - `angle design` -> `angle-designer`
+- `script development` -> `script-doctor`
 - `production (video)` -> `video-production-director`
 - `production (note/copy)` -> `content-producer`
 - `competitive review` -> `competitive-reviewer`
@@ -122,6 +123,7 @@ specialist 返回后，主控必须明确：
 - `whitespace`
 - `anti-patterns`
 - 如果目标平台是 Bilibili 中视频，还要输出 `benchmarks/bilibili-hook-patterns.json`
+- 如果参考视频库已经具备多条 transcript，还要输出 `benchmarks/reference-script-patterns.json`
 
 ### 3. Topic Selection
 
@@ -135,6 +137,7 @@ specialist 返回后，主控必须明确：
 - `topic backlog`
 - `priority score`
 - `selected topic`
+- 对 Bilibili 中视频，建议先显式维护 `planning/topic-pool.json` 或共享 strategy file，再生成 `planning/topic-selection.json`
 - 如果平台包含小红书，还要输出 `series lanes` 和 `note_video_mix`
 
 ### 4. Angle Design
@@ -154,6 +157,33 @@ specialist 返回后，主控必须明确：
   - `angles/attention-structure-template.json`
   - `angles/follow-conversion-hooks.json`
 - 对解释型中长视频，还要输出 `cognitive punch gate`
+
+### 4.5. Script Development
+
+输入：
+
+- `selected topic`
+- `angle brief`
+- `benchmark deck`
+- `benchmarks/reference-script-patterns.json`
+
+输出：
+
+- `content/script-polish-packet.json`
+- `duration_target`
+- `runtime_strategy`
+- `hard constraints`
+- `freedom zones`
+- `section blueprint`
+- `borrowed plays`
+- `rewrite loop`
+- `delegation contract`
+
+补充约束：
+
+- `supervisor-led` 下，真正的写稿 / 改稿默认由 `script-doctor` 执行
+- 主控只负责写 brief、给 inputs、审 gate 和整合轻量修正
+- 不要由主控直接产出整篇母稿，再把 specialist 变成摆设
 
 ### 5. Production
 
@@ -195,6 +225,18 @@ specialist 返回后，主控必须明确：
 - `render plan`
 - `render manifest`
 - `assembly qa report`
+
+对解释型中长视频，语音与字幕链路默认固定为：
+
+1. `narration_script` / 母稿定稿
+2. `build_tts_handoff.py` 产出 `voiceover-segments.json`、`voiceover-profile.json`
+3. 生成最终口播音频
+   - 必须把 `speed` 和 `pause_after_ms` 真正落到音频生成，不允许只写在 plan 里
+   - 知识类中长视频默认走更紧凑的 explanatory delivery，不走抒情慢速默认值
+4. `build_subtitles_from_segments.py` 基于最终口播音频和分段重新生成字幕
+5. 再进入 `render plan` / `render workflow`
+
+不得在已经存在最终口播音频的前提下，继续直接拿文稿字幕做最终烧录。
 - `subtitle-quality-report.json`
 - `scene-assembly-report.json`
 - `automation execution plan`
@@ -405,7 +447,9 @@ specialist 返回后，主控必须明确：
 - `account_positioning`: 如果是账号运营任务，说明账号定位和关注理由
 - `evidence`: 关键事实、案例、素材来源
 - `benchmark_refs`: 关键对标样本与观察点
+- `reference_script_patterns`: 参考视频稿件沉淀出的可复用写稿打法
 - `hook_hypotheses`: 预期最有胜率的开头与评论触发点
+- `script_polish_packet`: 对当前项目的写稿契约，记录 hard constraints、freedom zones 和 rewrite loop
 - `deliverable_type`: 图文、短视频或中长视频
 - `series_lanes`: 如果平台包含小红书，说明栏目和系列位
 - `note_video_mix`: 如果平台包含小红书，说明图文 / 短视频分工

@@ -93,6 +93,7 @@ class TestAgentTemplates:
 
         skill_ids = set(resp.json()["config"]["skills"])
         assert "content-production" in skill_ids
+        assert "script-polishing" in skill_ids
         assert "xiaohongshu-note-packaging" in skill_ids
         assert "video-asset-planning" in skill_ids
         assert "minimax-narration-postproduction" in skill_ids
@@ -108,6 +109,7 @@ class TestAgentTemplates:
         prompt = resp.json()["config"]["system_prompt"]
         assert "小红书图文" in prompt
         assert "页序" in prompt
+        assert "script-polish-packet.json" in prompt
 
     def test_topic_strategist_exposes_xiaohongshu_account_ops_skill(self, client):
         """Topic strategist should have the Xiaohongshu account operations strategy skill."""
@@ -118,6 +120,12 @@ class TestAgentTemplates:
         assert "topic-selection" in skill_ids
         assert "xiaohongshu-account-ops" in skill_ids
 
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "planning/topic-pool.json" in prompt
+        assert "proof_handle" in prompt
+        assert "具体的人类陷阱" in prompt
+        assert "换词复读" in prompt
+
     def test_benchmark_analyst_template_emphasizes_bilibili_pattern_pack(self, client):
         """Benchmark analyst should point to reusable Bilibili growth patterns, not just loose notes."""
         resp = client.get("/api/agents/templates/benchmark-analyst")
@@ -125,12 +133,30 @@ class TestAgentTemplates:
 
         skill_ids = set(resp.json()["config"]["skills"])
         assert "reference-video-ingest" in skill_ids
+        assert "script-polishing" in skill_ids
 
         prompt = resp.json()["config"]["system_prompt"]
         assert "bilibili-hook-patterns.json" in prompt
+        assert "reference-script-patterns.json" in prompt
         assert "reference-transcript.srt" in prompt
         assert "开场留存" in prompt
         assert "关注转化" in prompt
+
+    def test_script_doctor_template_exposes_reference_driven_rewrite_contract(self, client):
+        """Script doctor should turn reference transcripts into a reusable rewrite packet."""
+        resp = client.get("/api/agents/templates/script-doctor")
+        assert resp.status_code == 200
+
+        skill_ids = set(resp.json()["config"]["skills"])
+        assert "script-polishing" in skill_ids
+        assert "reference-video-ingest" in skill_ids
+
+        prompt = resp.json()["config"]["system_prompt"]
+        assert "reference-script-patterns.json" in prompt
+        assert "script-polish-packet.json" in prompt
+        assert "hard constraints" in prompt
+        assert "freedom zones" in prompt
+        assert "不要把中段写成固定模版" in prompt
 
     def test_angle_designer_template_emphasizes_attention_structure_artifacts(self, client):
         """Angle designer should produce structured opening and follow-conversion artifacts."""
@@ -172,6 +198,7 @@ class TestAgentTemplates:
 
         skill_ids = set(resp.json()["config"]["skills"])
         assert "content-production" in skill_ids
+        assert "script-polishing" in skill_ids
         assert "video-asset-planning" in skill_ids
         assert "licensed-footage-sourcing" in skill_ids
         assert "minimax-narration-postproduction" in skill_ids
@@ -193,6 +220,7 @@ class TestAgentTemplates:
         assert "scene-manifest.json" in prompt
         assert "transition-plan.json" in prompt
         assert "scene-assembly-report.json" in prompt
+        assert "script-polish-packet.json" in prompt
 
     def test_quality_specialist_templates_are_discoverable(self, client):
         """New media ops specialists appear in the built-in template list."""
@@ -203,6 +231,7 @@ class TestAgentTemplates:
         assert "media-ops-supervisor" in template_ids
         assert "benchmark-analyst" in template_ids
         assert "angle-designer" in template_ids
+        assert "script-doctor" in template_ids
         assert "competitive-reviewer" in template_ids
         assert "performance-analyst" in template_ids
         assert "video-production-director" in template_ids

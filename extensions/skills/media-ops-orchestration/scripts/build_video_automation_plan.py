@@ -75,6 +75,27 @@ def relative_to_project(path: Path, project_root: Path) -> str:
         return str(path.resolve())
 
 
+def resolve_candidate(project_root: Path, raw_path: str | None) -> Path | None:
+    if not raw_path:
+        return None
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def is_up_to_date(target: Path | None, dependencies: list[Path | None]) -> bool:
+    if target is None or not target.exists():
+        return False
+    target_mtime = target.stat().st_mtime
+    for dependency in dependencies:
+        if dependency is None or not dependency.exists():
+            continue
+        if target_mtime + 1e-6 < dependency.stat().st_mtime:
+            return False
+    return True
+
+
 def first_path(packet: dict[str, Any], *keys: str) -> str | None:
     for key in keys:
         value = packet.get(key)
@@ -134,7 +155,9 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
     lines.append(f"- `visual_diversity_status`: `{payload['summary']['visual_diversity_status']}`")
     lines.append(f"- `approved_generation_slot_count`: `{payload['summary']['approved_generation_slot_count']}`")
     lines.append(f"- `voiceover_status`: `{payload['summary']['voiceover_status']}`")
+    lines.append(f"- `voiceover_audio_exists`: `{payload['summary']['voiceover_audio_exists']}`")
     lines.append(f"- `subtitle_exists`: `{payload['summary']['subtitle_exists']}`")
+    lines.append(f"- `subtitle_up_to_date`: `{payload['summary']['subtitle_up_to_date']}`")
     lines.append(f"- `render_manifest_exists`: `{payload['summary']['render_manifest_exists']}`")
     lines.append(f"- `final_cut_count`: `{payload['summary']['final_cut_count']}`")
     lines.append(f"- `auto_base_quality_status`: `{payload['summary']['auto_base_quality_status']}`")
@@ -207,16 +230,26 @@ def main() -> int:
     output_audio = render_targets.get("voiceover_audio")
     subtitle_output = render_targets.get("subtitle_draft")
     minimax_cli = Path("/Users/mac/.codex/skills/minimax-multimodal-toolkit/scripts/tts/generate_voice.sh")
-    tts_segments_path = (project_root / segments_file).resolve() if isinstance(segments_file, str) and segments_file else None
-    voiceover_output_path = (project_root / output_audio).resolve() if isinstance(output_audio, str) and output_audio else None
-    subtitle_output_path = (project_root / subtitle_output).resolve() if isinstance(subtitle_output, str) and subtitle_output else None
+    timed_tts_wrapper = (
+        repo_root()
+        / "extensions"
+        / "skills"
+        / "minimax-narration-postproduction"
+        / "scripts"
+        / "generate_voiceover_with_timing.py"
+    )
+    tts_segments_path = resolve_candidate(project_root, segments_file if isinstance(segments_file, str) else None)
+    voiceover_output_path = resolve_candidate(project_root, output_audio if isinstance(output_audio, str) else None)
+    subtitle_output_path = resolve_candidate(project_root, subtitle_output if isinstance(subtitle_output, str) else None)
     render_manifest_path = project_root / "content" / "postproduction" / "render-manifest.json"
     auto_base_cut_path = project_root / "content" / "postproduction" / "auto-base-cut.mp4"
     auto_base_plan_path = project_root / "content" / "postproduction" / "auto-base-cut-plan.json"
     auto_base_plan = load_json(auto_base_plan_path)
     final_cut_paths = sorted((project_root / "content" / "final-cut").glob("*.mp4"))
+    tts_handoff_completed = voiceover_profile_path.exists() and bool(tts_segments_path and tts_segments_path.exists())
     voiceover_completed = bool(voiceover_output_path and voiceover_output_path.exists())
     subtitle_completed = bool(subtitle_output_path and subtitle_output_path.exists())
+    subtitle_up_to_date = is_up_to_date(subtitle_output_path, [voiceover_output_path, tts_segments_path])
     render_completed = render_manifest_path.exists() and bool(final_cut_paths)
 
     project_arg = relative_to_project(project_root, repo_root())
@@ -374,33 +407,67 @@ def main() -> int:
     )
     tasks.append(
         build_task(
-            task_id="voiceover-post",
-            title="生成旁白与字幕后期包",
-            status="completed"
-            if voiceover_completed and subtitle_completed
-            else "ready_to_run"
-            if tts_segments_path and minimax_cli.exists()
-            else voiceover_status,
-            why="配音和字幕属于自动化后期链的一部分，不应等到装配时临场补。",
+            task_id="tts-handoff",
+            title="从定稿母稿生成 TTS handoff",
+            status="completed" if tts_handoff_completed else "ready_to_run",
+            why="先把定稿母稿整理成 voiceover-segments 和 voiceover-profile，后续语音与字幕都依赖这一步。",
             command=[
                 "python3",
                 "extensions/skills/minimax-narration-postproduction/scripts/build_tts_handoff.py",
                 "--project-root",
                 project_arg,
-            ] if not tts_segments_path else [
-                "bash",
-                str(minimax_cli),
-                "generate",
-                relative_to_project(tts_segments_path, project_root),
-                "-o",
-                relative_to_project(voiceover_output_path, project_root) if voiceover_output_path else "content/postproduction/minimax-output/voiceover.mp3",
+            ],
+            outputs=[
+                "content/postproduction/voiceover-profile.json",
+                "content/postproduction/voiceover-segments.json",
+                "content/postproduction/voiceover-tts-input.txt",
+            ],
+            blocking=False,
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="voiceover-generate",
+            title="基于 TTS handoff 生成最终口播音频",
+            status="completed"
+            if voiceover_completed
+            else "ready_to_run"
+            if tts_handoff_completed and minimax_cli.exists()
+            else "required",
+            why="字幕应以后生成的最终口播为真源，不能先拿文稿字幕烧录再回头补救。",
+            command=[
+                "python3",
+                "extensions/skills/minimax-narration-postproduction/scripts/generate_voiceover_with_timing.py",
+                "--project-root",
+                project_arg,
             ],
             outputs=[
                 "content/postproduction/*.mp3",
-                "content/postproduction/*.srt",
-                "content/postproduction/render-plan.json",
+                "content/postproduction/voiceover-generation-manifest.json",
             ],
-            blocking=voiceover_status not in {"ready", "draft_ready", "pending_sample_check"} and not (tts_segments_path and minimax_cli.exists()),
+            blocking=not voiceover_completed and not (tts_handoff_completed and timed_tts_wrapper.exists() and minimax_cli.exists()),
+        )
+    )
+    tasks.append(
+        build_task(
+            task_id="subtitle-from-voiceover",
+            title="根据最终口播音频重生成字幕",
+            status="completed"
+            if subtitle_up_to_date
+            else "ready_to_run"
+            if voiceover_completed and tts_segments_path and tts_segments_path.exists()
+            else "required",
+            why="字幕要在最终音频落地后再生成，避免旧 SRT 继续沿用，或文稿节奏与真实停顿漂移。",
+            command=[
+                "python3",
+                "extensions/skills/minimax-narration-postproduction/scripts/build_subtitles_from_segments.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "content/postproduction/*.srt",
+            ],
+            blocking=not subtitle_up_to_date and not (voiceover_completed and tts_segments_path and tts_segments_path.exists()),
         )
     )
     tasks.append(
@@ -437,6 +504,10 @@ def main() -> int:
         notes.append("visual diversity gate 还没 pass，需要减少重复素材或补更多章节资产。")
     if workflow_quality_gate.get("overall_status") and workflow_quality_gate.get("overall_status") != "pass":
         notes.append("workflow quality gate 还没 pass，发布前需要先修复 revise / block 维度。")
+    if subtitle_completed and not subtitle_up_to_date:
+        notes.append("当前字幕文件不是基于最新口播生成的，需要在 render 前先重生字幕。")
+    if not voiceover_completed and tts_handoff_completed:
+        notes.append("当前已具备 TTS handoff，但还没有最终口播音频；先生成音频，再生成字幕。")
     notes.append("自治模式下，人工录屏只允许作为 fallback，不应再作为 Production Sprint Phase 1 的默认动作。")
     notes.append("B-roll、图卡导出、后期装配三条链都已有本地 skill 或脚本入口，应先跑自动入口，再看是否需要人工干预。")
 
@@ -472,7 +543,9 @@ def main() -> int:
             "export_manifest_exists": graphics_export_manifest.exists(),
             "prompt_proof_pack_exists": prompt_proof_pack_path.exists(),
             "voiceover_handoff_exists": voiceover_profile_path.exists(),
+            "voiceover_audio_exists": voiceover_completed,
             "subtitle_exists": subtitle_completed,
+            "subtitle_up_to_date": subtitle_up_to_date,
             "render_manifest_exists": render_manifest_path.exists(),
             "final_cut_count": len(final_cut_paths),
             "auto_base_cut_exists": auto_base_cut_path.exists(),

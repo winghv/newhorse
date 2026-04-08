@@ -12,6 +12,7 @@ from typing import Any
 
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
 ALLOWED_GENERATION_TYPES = {
     "text-to-image",
     "image-to-image",
@@ -91,6 +92,15 @@ def relative_to_project(path: Path, project_root: Path) -> str:
         return str(path.resolve())
 
 
+def resolve_candidate(project_root: Path, raw_path: str | None) -> Path | None:
+    if not raw_path:
+        return None
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -167,6 +177,71 @@ def generated_keyframes_by_chapter(project_root: Path) -> dict[str, list[Path]]:
     return grouped
 
 
+def visual_prebake_assets_by_chapter(project_root: Path) -> dict[str, dict[str, Any]]:
+    payload = load_json(project_root / "assets" / "visual-prebake-plan.json")
+    chapters = payload.get("chapters") if isinstance(payload.get("chapters"), list) else []
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in chapters:
+        if not isinstance(item, dict):
+            continue
+        chapter_id = str(item.get("chapter_id") or "").strip()
+        if not chapter_id:
+            continue
+
+        proof_spec = item.get("proof_asset")
+        proof_asset_path: Path | None = None
+        proof_asset_type = "generated-keyart"
+        if isinstance(proof_spec, dict):
+            proof_asset_path = resolve_candidate(project_root, str(proof_spec.get("path") or "").strip())
+            proof_asset_type = str(proof_spec.get("type") or "generated-keyart").strip() or "generated-keyart"
+        elif isinstance(proof_spec, str):
+            proof_asset_path = resolve_candidate(project_root, proof_spec.strip())
+
+        candidate_images: list[Path] = []
+        for raw_path in item.get("supporting_images", []):
+            if not isinstance(raw_path, str):
+                continue
+            candidate = resolve_candidate(project_root, raw_path.strip())
+            if candidate is None or not candidate.exists() or candidate.suffix.lower() not in IMAGE_SUFFIXES:
+                continue
+            candidate_images.append(candidate)
+
+        fallback_graphics: list[Path] = []
+        for raw_path in item.get("fallback_graphics", []):
+            if not isinstance(raw_path, str):
+                continue
+            candidate = resolve_candidate(project_root, raw_path.strip())
+            if candidate is None or not candidate.exists() or candidate.suffix.lower() not in IMAGE_SUFFIXES:
+                continue
+            fallback_graphics.append(candidate)
+
+        if proof_asset_path is not None and (
+            not proof_asset_path.exists() or proof_asset_path.suffix.lower() not in IMAGE_SUFFIXES
+        ):
+            proof_asset_path = None
+
+        if proof_asset_path is None and candidate_images:
+            proof_asset_path = candidate_images[0]
+
+        supporting_images: list[Path] = []
+        seen_paths: set[Path] = set()
+        for candidate in [*candidate_images, *fallback_graphics]:
+            if proof_asset_path is not None and candidate == proof_asset_path:
+                continue
+            if candidate in seen_paths:
+                continue
+            seen_paths.add(candidate)
+            supporting_images.append(candidate)
+
+        grouped[chapter_id] = {
+            "proof_asset_path": proof_asset_path,
+            "proof_asset_type": proof_asset_type,
+            "supporting_images": supporting_images,
+            "max_repeat_uses": int(item.get("max_repeat_uses", 2)),
+        }
+    return grouped
+
+
 def extract_quota(payload: dict[str, Any]) -> dict[str, Any]:
     snapshot = payload.get("quota_snapshot") if isinstance(payload.get("quota_snapshot"), dict) else {}
     daily_limit = payload.get("daily_quota_limit") or snapshot.get("daily_limit") or 0
@@ -189,6 +264,37 @@ def normalize_generation_slot(slot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def generated_video_assets_by_chapter(project_root: Path) -> dict[str, list[dict[str, Any]]]:
+    generation_ledger = load_json(project_root / "assets" / "generation-ledger.json")
+    entries = generation_ledger.get("entries")
+    if not isinstance(entries, list):
+        return {}
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "").strip().lower() != "success":
+            continue
+        chapter_id = str(item.get("chapter_id") or "").strip()
+        asset_path = str(item.get("asset_path") or "").strip()
+        if not chapter_id or not asset_path:
+            continue
+        candidate = resolve_candidate(project_root, asset_path)
+        if candidate is None or not candidate.exists() or candidate.suffix.lower() not in VIDEO_SUFFIXES:
+            continue
+        grouped.setdefault(chapter_id, []).append(
+            {
+                "clip_id": str(item.get("slot_id") or candidate.stem),
+                "local_path": relative_to_project(candidate, project_root),
+                "source_type": "generated-media",
+                "source_track": "generated",
+                "generation_type": str(item.get("generation_type") or ""),
+            }
+        )
+    return grouped
+
+
 def main() -> int:
     args = parse_args()
     project_root = resolve_project_root(args)
@@ -205,8 +311,10 @@ def main() -> int:
     approved_by_chapter = grouped_by_chapter(approved_sources)
     production_ingests = ingested_assets_by_chapter(asset_ingest_manifest)
     exploration_ingests = ingested_assets_by_chapter(exploration_ingest_manifest)
+    generated_video_ingests = generated_video_assets_by_chapter(project_root)
     graphics = ordered_graphics(project_root)
     generated_keyframes = generated_keyframes_by_chapter(project_root)
+    visual_prebake = visual_prebake_assets_by_chapter(project_root)
 
     generation_budget_decision = (
         primary.get("generation_budget_decision")
@@ -233,9 +341,20 @@ def main() -> int:
     for index, chapter in enumerate(chapter_outline):
         chapter_id = str(chapter.get("chapter_id") or f"ch{index + 1}")
         fallback_graphic_path = graphics[index] if index < len(graphics) else None
+        prebaked_visuals = visual_prebake.get(chapter_id, {})
         generated_chapter_assets = generated_keyframes.get(chapter_id, [])
-        proof_asset_path = generated_chapter_assets[0] if generated_chapter_assets else fallback_graphic_path
-        proof_asset_type = "generated-keyart" if generated_chapter_assets else ("graphics-card" if fallback_graphic_path else "missing")
+        supporting_images = [
+            path
+            for path in prebaked_visuals.get("supporting_images", [])
+            if isinstance(path, Path) and path.exists()
+        ]
+        proof_asset_path = prebaked_visuals.get("proof_asset_path") or (generated_chapter_assets[0] if generated_chapter_assets else fallback_graphic_path)
+        if proof_asset_path is not None and prebaked_visuals.get("proof_asset_path") is not None:
+            proof_asset_type = str(prebaked_visuals.get("proof_asset_type") or "generated-keyart")
+        elif generated_chapter_assets:
+            proof_asset_type = "generated-keyart"
+        else:
+            proof_asset_type = "graphics-card" if fallback_graphic_path else "missing"
         supporting_b_roll: list[dict[str, Any]] = []
         seen_asset_paths: set[str] = set()
         for item in approved_by_chapter.get(chapter_id, []):
@@ -266,6 +385,20 @@ def main() -> int:
                     "source_track": str(item.get("source_track") or "production"),
                 }
             )
+        for item in generated_video_ingests.get(chapter_id, []):
+            asset_path = str(item.get("local_path") or "").strip()
+            if not asset_path or asset_path in seen_asset_paths:
+                continue
+            seen_asset_paths.add(asset_path)
+            supporting_b_roll.append(
+                {
+                    "clip_id": str(item.get("clip_id") or ""),
+                    "asset_path": asset_path,
+                    "source_type": str(item.get("source_type") or "generated-media"),
+                    "source_track": str(item.get("source_track") or "generated"),
+                    "generation_type": str(item.get("generation_type") or ""),
+                }
+            )
         for item in exploration_ingests.get(chapter_id, []):
             asset_path = str(item.get("local_path") or "").strip()
             if not asset_path or asset_path in seen_asset_paths:
@@ -282,10 +415,18 @@ def main() -> int:
         fallback_graphics: list[str] = []
         if proof_asset_path is not None:
             fallback_graphics.append(relative_to_project(proof_asset_path, project_root))
+        for prebaked_path in supporting_images:
+            relative_path = relative_to_project(prebaked_path, project_root)
+            if relative_path not in fallback_graphics:
+                fallback_graphics.append(relative_path)
         for generated_path in generated_chapter_assets[1:]:
-            fallback_graphics.append(relative_to_project(generated_path, project_root))
+            relative_path = relative_to_project(generated_path, project_root)
+            if relative_path not in fallback_graphics:
+                fallback_graphics.append(relative_path)
         if fallback_graphic_path is not None and fallback_graphic_path != proof_asset_path:
-            fallback_graphics.append(relative_to_project(fallback_graphic_path, project_root))
+            relative_path = relative_to_project(fallback_graphic_path, project_root)
+            if relative_path not in fallback_graphics:
+                fallback_graphics.append(relative_path)
         approved_generation_slots = [item for item in approved_generated_assets if item["chapter_id"] == chapter_id]
 
         chapters.append(
@@ -300,7 +441,7 @@ def main() -> int:
                 "supporting_b_roll": supporting_b_roll,
                 "fallback_graphics": fallback_graphics,
                 "must_capture_list": [],
-                "max_repeat_uses": 2,
+                "max_repeat_uses": int(prebaked_visuals.get("max_repeat_uses", 2)),
                 "approved_generation_slots": approved_generation_slots,
             }
         )

@@ -271,8 +271,12 @@ def main() -> int:
     write_json(segments_path, segments_payload)
 
     default_emotion = "calm"
+    delivery_profile = "tight_explanatory"
     if performance_plan.get("voice_strategy_defaults") and isinstance(performance_plan["voice_strategy_defaults"], dict):
         default_emotion = str(performance_plan["voice_strategy_defaults"].get("default_emotion") or default_emotion)
+        delivery_profile = str(
+            performance_plan["voice_strategy_defaults"].get("delivery_profile") or delivery_profile
+        )
 
     profile_payload = {
         "platform": primary.get("platforms", ["bilibili"])[0] if isinstance(primary.get("platforms"), list) and primary.get("platforms") else "bilibili",
@@ -283,6 +287,7 @@ def main() -> int:
             "primary_voice_id": voice_name,
             "model": "speech-2.8-hd",
             "language": "zh-CN",
+            "delivery_profile": delivery_profile,
             "speed": speed,
             "volume": 1.0,
             "pitch": 0,

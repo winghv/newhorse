@@ -15,9 +15,9 @@
     "setup": "npm install",
     "doctor": "node scripts/doctor.js",
     "test": "npm run test:api && npm run test:web",
-    "test:api": "cd apps/api && python -m pytest",
-    "test:api:cov": "cd apps/api && python -m pytest --cov=app --cov-report=term-missing",
-    "test:api:v": "cd apps/api && python -m pytest -v",
+    "test:api": "node scripts/run-api-python.js -m pytest",
+    "test:api:cov": "node scripts/run-api-python.js -m pytest --cov=app --cov-report=term-missing",
+    "test:api:v": "node scripts/run-api-python.js -m pytest -v",
     "test:web": "cd apps/web && npx vitest run",
     "test:web:watch": "cd apps/web && npx vitest"
   },
@@ -30,5 +30,8 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@parcel/watcher-darwin-arm64": "^2.5.6"
   }
 }

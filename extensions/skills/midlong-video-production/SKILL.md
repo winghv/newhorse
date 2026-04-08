@@ -27,6 +27,10 @@ version: 1.0.0
    - 新反转
    - 新案例
    - 新操作步骤
+3.1. 如果这是知识/认知类 B 站中长视频，写母稿前先读取：
+   - `benchmarks/reference-script-patterns.json`
+   - `content/script-polish-packet.json`
+   不要只套固定章节模板。
 4. 为每一章写明：
    - `chapter_goal`
    - `A-roll`
@@ -57,6 +61,7 @@ version: 1.0.0
 - `cognitive_punch_gate`
 - `chapter_outline`
 - `retention_beats`
+- `script_polish_packet`
 - `master_script`
 - `narration_script`
 - `subtitle_source_script`
@@ -74,6 +79,7 @@ version: 1.0.0
 ## Rules
 
 - 开场要先兑现承诺，不要先讲背景故事
+- 不要把整条视频写成固定模版；只锁定开头和结尾约束，中段允许案例、反例和机制递进自由展开
 - 每个章节都要推动理解，不允许“信息停滞段”
 - 视觉刷新默认不晚于 `20-30` 秒
 - 每章默认至少补一种证据：案例、常见错误动作、平台现象、反例或现实后果

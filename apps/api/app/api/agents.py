@@ -2,6 +2,7 @@
 Agents API router
 """
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -33,7 +34,7 @@ class AgentConfigRequest(BaseModel):
     skills: list[str] = []
     model: str = "claude-sonnet-4-5-20250929"
     allowed_tools: list[str] = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
-    preferred_cli: str | None = None
+    preferred_cli: Optional[str] = None
 
 
 @router.get("/")

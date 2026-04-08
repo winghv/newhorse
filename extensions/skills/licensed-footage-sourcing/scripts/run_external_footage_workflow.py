@@ -35,6 +35,7 @@ DEFAULT_MAX_RESULTS_PER_QUERY = 12
 DEFAULT_MAX_SHORTLIST_PER_CHAPTER = 12
 DEFAULT_APPROVED_PER_CHAPTER = 6
 DEFAULT_MAX_EXPLORATION_PER_CHAPTER = 18
+DEFAULT_MIN_PRODUCTION_MATCH_SCORE = 0.55
 PROVIDER_PRIORITY = {
     "pexels": 4,
     "pixabay": 4,
@@ -212,7 +213,11 @@ def slugify(value: str) -> str:
 
 
 def tokenize(value: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) >= 2}
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]{2,}", value.lower())
+        if len(token) >= 2
+    }
 
 
 def relative_to_project(path: Path, project_root: Path) -> str:
@@ -228,6 +233,21 @@ def read_bytes_from_url(url: str) -> bytes:
         response.raise_for_status()
         return response.content
     return Path(url).read_bytes()
+
+
+def resolve_executable_path(binary: str, *, display_name: str) -> str:
+    candidate = str(binary or "").strip()
+    if not candidate:
+        raise ValueError(f"{display_name} binary is required")
+    candidate_path = Path(candidate).expanduser()
+    resolved = str(candidate_path.resolve()) if candidate_path.is_file() else shutil.which(candidate)
+    if not resolved:
+        raise ValueError(f"{display_name} binary not found: {binary}")
+    try:
+        subprocess.run([resolved, "--version"], check=False, capture_output=True, text=True)
+    except OSError as exc:
+        raise ValueError(f"{display_name} binary is not runnable: {resolved} ({exc})") from exc
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -403,9 +423,7 @@ class YtDlpProvider(FootageProvider):
     name = "yt-dlp"
 
     def __init__(self, *, binary: str) -> None:
-        if not shutil.which(binary):
-            raise ValueError(f"yt-dlp binary not found: {binary}")
-        self._binary = binary
+        self._binary = resolve_executable_path(binary, display_name="yt-dlp")
 
     def search(self, query: str, limit: int) -> list[SearchResult]:
         command = [
@@ -505,6 +523,73 @@ def _string_list(value: Any) -> list[str]:
     return []
 
 
+GENERIC_FOOTAGE_TOKENS = {
+    "abstract",
+    "background",
+    "bokeh",
+    "particles",
+    "loop",
+    "seamless",
+    "template",
+    "animation",
+    "motion",
+    "graphic",
+    "business",
+    "corporate",
+    "technology",
+    "digital",
+    "success",
+    "teamwork",
+    "dinosaur",
+    "prehistoric",
+    "chroma",
+    "greenscreen",
+    "green",
+    "screen",
+    "3d",
+    "cartoon",
+    "animated",
+    "sleep",
+    "relaxing",
+    "reddit",
+    "story",
+    "stories",
+    "lookbook",
+}
+
+YT_DLP_NON_BROLL_TOKENS = {
+    "tips",
+    "tip",
+    "tutorial",
+    "how",
+    "guide",
+    "explained",
+    "explain",
+    "podcast",
+    "interview",
+    "lecture",
+    "course",
+    "review",
+    "reaction",
+    "talk",
+    "speech",
+    "music",
+    "song",
+    "mix",
+    "livestream",
+    "webinar",
+    "reddit",
+    "stories",
+    "story",
+    "sleep",
+    "relaxing",
+    "white noise",
+    "tedx",
+    "lookbook",
+    "compilation",
+}
+
+
 def _int_or_none(value: Any) -> int | None:
     try:
         if value is None:
@@ -577,8 +662,19 @@ def normalize_clip_briefs(content_packet: dict[str, Any]) -> list[dict[str, Any]
         if not isinstance(item, dict):
             continue
         chapter_id = str(item.get("chapter_id") or f"chapter-{index}")
-        queries = _string_list(item.get("queries"))
+        queries = (
+            _string_list(item.get("queries"))
+            or _string_list(item.get("english_queries"))
+            or _string_list(item.get("search_queries"))
+        )
         direct_source_urls = _string_list(item.get("direct_source_urls"))
+        raw_provider_queries = item.get("provider_queries") or item.get("queries_by_provider")
+        provider_queries: dict[str, list[str]] = {}
+        if isinstance(raw_provider_queries, dict):
+            for provider_name, provider_query_list in raw_provider_queries.items():
+                normalized_queries = _string_list(provider_query_list)
+                if normalized_queries:
+                    provider_queries[str(provider_name).strip()] = normalized_queries
         if not queries and not direct_source_urls:
             continue
         normalized.append(
@@ -586,12 +682,16 @@ def normalize_clip_briefs(content_packet: dict[str, Any]) -> list[dict[str, Any]
                 "chapter_id": chapter_id,
                 "shot_intent": str(item.get("shot_intent") or ""),
                 "queries": queries,
+                "provider_queries": provider_queries,
                 "direct_source_urls": direct_source_urls,
                 "source_types": _string_list(item.get("source_types")),
+                "must_have_terms": _string_list(item.get("must_have_terms")),
+                "avoid_terms": _string_list(item.get("avoid_terms")),
                 "fallback": str(item.get("fallback") or ""),
                 "required_coverage_seconds": float(item.get("required_coverage_seconds") or item.get("chapter_duration_seconds") or 0),
                 "minimum_candidates": int(item.get("minimum_candidates") or 2),
                 "max_single_asset_seconds": float(item.get("max_single_asset_seconds") or 30),
+                "minimum_match_score": float(item.get("minimum_match_score") or DEFAULT_MIN_PRODUCTION_MATCH_SCORE),
             }
         )
     if not normalized:
@@ -599,14 +699,51 @@ def normalize_clip_briefs(content_packet: dict[str, Any]) -> list[dict[str, Any]
     return normalized
 
 
-def score_result(query: str, result: SearchResult) -> float:
+def score_result(query: str, result: SearchResult, chapter: dict[str, Any]) -> float:
     query_tokens = tokenize(query)
     haystack_tokens = tokenize(" ".join([result.title, *result.tags, result.page_url]))
     if not query_tokens:
         return 0.0
     overlap = len(query_tokens & haystack_tokens)
     exact_bonus = 0.25 if query.lower() in " ".join([result.title, " ".join(result.tags)]).lower() else 0.0
-    return round((overlap / len(query_tokens)) + exact_bonus, 4)
+    score = (overlap / len(query_tokens)) + exact_bonus
+
+    must_have_terms = [term.lower().strip() for term in chapter.get("must_have_terms", []) if str(term).strip()]
+    avoid_terms = [term.lower().strip() for term in chapter.get("avoid_terms", []) if str(term).strip()]
+    title_and_tags = " ".join([result.title, " ".join(result.tags)]).lower()
+    matched_must_have = sum(1 for term in must_have_terms if term in title_and_tags)
+    if must_have_terms:
+        score += 0.18 * matched_must_have
+        if matched_must_have == 0:
+            score -= 0.4
+
+    matched_avoid = sum(1 for term in avoid_terms if term in title_and_tags)
+    if matched_avoid:
+        score -= 0.35 * matched_avoid
+
+    generic_overlap = len(GENERIC_FOOTAGE_TOKENS & haystack_tokens)
+    if generic_overlap >= 2 and overlap <= 1:
+        score -= 0.35
+
+    if result.provider == "yt-dlp":
+        non_broll_hits = sum(1 for token in YT_DLP_NON_BROLL_TOKENS if token in title_and_tags)
+        if non_broll_hits:
+            score -= 0.14 * non_broll_hits
+
+    if result.width and result.height:
+        aspect_ratio = result.width / max(result.height, 1)
+        if aspect_ratio >= 1.45:
+            score += 0.05
+        elif aspect_ratio < 1.0:
+            score -= 0.18
+
+    if result.duration_seconds:
+        if 4 <= result.duration_seconds <= 12:
+            score += 0.08
+        elif result.duration_seconds < 2:
+            score -= 0.12
+
+    return round(max(score, 0.0), 4)
 
 
 def candidate_payload(chapter: dict[str, Any], query: str, result: SearchResult) -> dict[str, Any]:
@@ -614,7 +751,8 @@ def candidate_payload(chapter: dict[str, Any], query: str, result: SearchResult)
         "chapter_id": chapter["chapter_id"],
         "shot_purpose": chapter["shot_intent"],
         "query": query,
-        "match_score": score_result(query, result),
+        "match_score": score_result(query, result, chapter),
+        "minimum_match_score": float(chapter.get("minimum_match_score") or DEFAULT_MIN_PRODUCTION_MATCH_SCORE),
         "provider": result.provider,
         "provider_asset_id": result.provider_asset_id,
         "title": result.title,
@@ -642,11 +780,21 @@ def candidate_key(item: dict[str, Any]) -> str:
 
 
 def is_production_eligible(item: dict[str, Any]) -> bool:
-    return item.get("match_score", 0) > 0 and item.get("license_status") == "approved"
+    minimum_match_score = float(item.get("minimum_match_score") or DEFAULT_MIN_PRODUCTION_MATCH_SCORE)
+    return item.get("match_score", 0) >= minimum_match_score and item.get("license_status") == "approved"
 
 
 def provider_priority(name: str | None) -> int:
     return PROVIDER_PRIORITY.get(str(name or "").strip(), 2)
+
+
+def chapter_queries_for_provider(chapter: dict[str, Any], provider_name: str) -> list[str]:
+    raw_provider_queries = chapter.get("provider_queries")
+    if isinstance(raw_provider_queries, dict):
+        provider_specific = raw_provider_queries.get(provider_name)
+        if isinstance(provider_specific, list) and provider_specific:
+            return provider_specific
+    return list(chapter.get("queries") or [])
 
 
 def diversify_ranked_candidates(
@@ -694,6 +842,50 @@ def diversify_ranked_candidates(
             break
 
     return diversified
+
+
+def distribute_candidates_by_chapter(
+    *,
+    clip_briefs: list[dict[str, Any]],
+    chapter_candidates: dict[str, list[dict[str, Any]]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return [
+            item
+            for chapter in clip_briefs
+            for item in chapter_candidates.get(chapter["chapter_id"], [])
+        ]
+
+    chapter_order = [chapter["chapter_id"] for chapter in clip_briefs]
+    positions = {chapter_id: 0 for chapter_id in chapter_order}
+    selected: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    while len(selected) < limit:
+        progressed = False
+        for chapter_id in chapter_order:
+            items = chapter_candidates.get(chapter_id, [])
+            index = positions.get(chapter_id, 0)
+            while index < len(items):
+                candidate = items[index]
+                index += 1
+                key = candidate_key(candidate)
+                if key in seen_keys:
+                    continue
+                selected.append(candidate)
+                seen_keys.add(key)
+                positions[chapter_id] = index
+                progressed = True
+                break
+            else:
+                positions[chapter_id] = index
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+
+    return selected
 
 
 def error_payload(
@@ -778,6 +970,12 @@ def build_query_sheet(
         lines.append("- `queries`:")
         for query in entry["queries"]:
             lines.append(f"  - `{query}`")
+        if entry.get("provider_queries"):
+            lines.append("- `provider_queries`:")
+            for provider_name, provider_queries in sorted(entry["provider_queries"].items()):
+                lines.append(f"  - `{provider_name}`:")
+                for query in provider_queries:
+                    lines.append(f"    - `{query}`")
         lines.append("- `preferred_sources`:")
         if entry["source_types"]:
             for source_type in entry["source_types"]:
@@ -805,8 +1003,13 @@ def build_query_sheet(
 
 def download_with_ytdlp(binary: str, source_url: str, target_path: Path) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [binary, "--no-progress", "--no-part", "-o", str(target_path), source_url]
-    subprocess.run(command, check=True, capture_output=True, text=True)
+    resolved_binary = resolve_executable_path(binary, display_name="yt-dlp")
+    command = [resolved_binary, "--no-progress", "--no-part", "-o", str(target_path), source_url]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        raise RuntimeError(stderr or str(exc)) from exc
 
 
 def download_candidate_asset(
@@ -822,7 +1025,7 @@ def download_candidate_asset(
     target_dir = project_root / "assets" / base_dir_name / str(item["chapter_id"])
     target_dir.mkdir(parents=True, exist_ok=True)
     clip_id = item.get("clip_id") or f"{item['provider']}-{item['provider_asset_id']}"
-    target_path = target_dir / f"{index:02d}-{slugify(str(item['provider']))}-{slugify(str(clip_id))}{extension}"
+    target_path = target_dir / f"{slugify(str(item['provider']))}-{slugify(str(clip_id))}{extension}"
     source_url = str(item.get("source_url") or item.get("page_url") or item.get("download_url") or "")
     if item["provider"] == "yt-dlp":
         download_with_ytdlp(yt_dlp_bin, source_url, target_path)
@@ -955,9 +1158,9 @@ def main() -> int:
     for chapter in clip_briefs:
         chapter_id = chapter["chapter_id"]
         chapter_results[chapter_id] = {}
-        chapter_queries = chapter["queries"]
-        for query in chapter_queries:
-            for provider in providers:
+        for provider in providers:
+            chapter_queries = chapter_queries_for_provider(chapter, provider.name)
+            for query in chapter_queries:
                 provider_summary[provider.name]["queries_attempted"] += 1
                 try:
                     results = provider.search(query, args.max_results_per_query)
@@ -1215,16 +1418,24 @@ def main() -> int:
     exploration_download_errors: list[dict[str, Any]] = []
     if args.download_exploration:
         approved_keys = {item["clip_id"] for item in approved_manifest_entries}
-        exploration_to_download = [
-            {
-                **item,
-                "clip_id": f"{item['provider']}-{item['provider_asset_id']}",
-                "source_url": item["page_url"],
-                "usage_scope": ["b-roll"],
-            }
-            for item in exploration_results
-            if f"{item['provider']}-{item['provider_asset_id']}" not in approved_keys
-        ]
+        exploration_candidates_by_chapter = {
+            chapter["chapter_id"]: [
+                {
+                    **item,
+                    "clip_id": f"{item['provider']}-{item['provider_asset_id']}",
+                    "source_url": item["page_url"],
+                    "usage_scope": ["b-roll"],
+                }
+                for item in chapter_exploration_shortlists.get(chapter["chapter_id"], [])
+                if f"{item['provider']}-{item['provider_asset_id']}" not in approved_keys
+            ]
+            for chapter in clip_briefs
+        }
+        exploration_to_download = distribute_candidates_by_chapter(
+            clip_briefs=clip_briefs,
+            chapter_candidates=exploration_candidates_by_chapter,
+            limit=args.exploration_download_limit,
+        )
         if args.exploration_download_limit > 0:
             exploration_to_download = exploration_to_download[: args.exploration_download_limit]
         downloaded_exploration_clip_ids: set[str] = set()
@@ -1264,6 +1475,7 @@ def main() -> int:
         "content_id": content_id,
         "generated_at": generated_at,
         "providers": [provider.name for provider in providers],
+        "provider_errors": provider_errors,
         "results": flat_results,
         "chapters": [
             {
@@ -1279,6 +1491,7 @@ def main() -> int:
         "content_id": content_id,
         "generated_at": generated_at,
         "providers": [provider.name for provider in providers],
+        "provider_errors": provider_errors,
         "results": exploration_results,
         "chapters": [
             {

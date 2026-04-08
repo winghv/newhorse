@@ -21,6 +21,7 @@ version: 1.0.0
 1. 确定对标范围：平台、题材、受众、时间窗口、样本数量。
 2. 选样本：头部内容、同题材高互动内容、同受众强创作者。
 3. 如果已经拿到参考视频 URL / BV 号，先用 `reference-video-ingest` 把 metadata 和 transcript artifacts 沉淀出来，再开始拆结构。
+3.1. 如果参考视频库已经积累到可用规模，再用 `script-polishing` 沉淀 `benchmarks/reference-script-patterns.json`，把写稿打法从“读后感”升级成可复用模式包。
 3. 拆每个样本：
    - 开头钩子
    - 结构节奏
@@ -46,6 +47,17 @@ python3 extensions/skills/benchmark-analysis/scripts/build_bilibili_pattern_pack
 这会产出：
 
 - `benchmarks/bilibili-hook-patterns.json`
+
+参考稿件打法包可以另外生成：
+
+```bash
+python3 extensions/skills/script-polishing/scripts/build_reference_script_patterns.py \
+  --project-root data/media-ops/<content-id>
+```
+
+这会产出：
+
+- `benchmarks/reference-script-patterns.json`
 
 ## Output Template
 

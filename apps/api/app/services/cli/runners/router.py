@@ -21,7 +21,7 @@ class ProviderRouter:
         model_id: Optional[str] = None,
         provider_id: Optional[str] = None,
         project_id: Optional[str] = None,
-    ) -> dict | None:
+    ) -> Optional[dict]:
         """
         Resolve the provider, model, api_key, and base_url to use.
 

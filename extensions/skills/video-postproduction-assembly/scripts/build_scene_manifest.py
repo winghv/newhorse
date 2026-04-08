@@ -9,6 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
+DISALLOWED_PRIMARY_ASSET_TYPES = {"graphics-card", "text-card", "text-only-card"}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -73,65 +77,156 @@ def primary_packet(payload: dict[str, Any]) -> dict[str, Any]:
     return nested if isinstance(nested, dict) else payload
 
 
+def fallback_quote_text(*candidates: str, max_length: int = 28) -> str:
+    for candidate in candidates:
+        text = str(candidate or "").strip().replace("\n", "")
+        if not text:
+            continue
+        text = text.split("。", 1)[0].split("？", 1)[0].split("！", 1)[0].strip("，,:： ")
+        if text:
+            return text[:max_length]
+    return "先进入现实"
+
+
+def normalize_typewriter_quote(raw_quote: Any) -> dict[str, Any] | None:
+    if isinstance(raw_quote, str):
+        text = raw_quote.strip()
+        if not text:
+            return None
+        return {
+            "type": "typewriter_quote",
+            "text": text,
+            "anchor": "upper_center",
+            "chars_per_second": 8,
+            "start_offset_seconds": 0.0,
+            "duration_seconds": min(max(len(text) / 5.5, 2.4), 4.4),
+        }
+    if not isinstance(raw_quote, dict):
+        return None
+    text = str(raw_quote.get("text") or "").strip()
+    if not text:
+        return None
+    payload = {
+        "type": "typewriter_quote",
+        "text": text,
+        "anchor": str(raw_quote.get("anchor") or "upper_center"),
+        "chars_per_second": float(raw_quote.get("chars_per_second") or 8),
+        "start_offset_seconds": float(raw_quote.get("start_offset_seconds") or 0.0),
+        "duration_seconds": float(raw_quote.get("duration_seconds") or min(max(len(text) / 5.5, 2.4), 4.4)),
+    }
+    if raw_quote.get("target_role"):
+        payload["target_role"] = str(raw_quote.get("target_role"))
+    return payload
+
+
+def expand_candidates(project_root: Path, raw_path: str | None) -> list[Path]:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return []
+    raw_value = raw_path.strip()
+    if any(token in raw_value for token in ("*", "?", "[")):
+        return [path.resolve() for path in sorted(project_root.glob(raw_value)) if path.is_file()]
+
+    candidate = Path(raw_value)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    candidate = candidate.resolve()
+    if not candidate.exists() or not candidate.is_file():
+        return []
+    return [candidate]
+
+
 def build_emphasis_fx(
     chapter_title: str,
     chapter_goal: str,
     *,
     index: int,
     lead_hook: str,
+    chapter_payload: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     combined = f"{chapter_title} {chapter_goal}"
+    explicit_quotes = []
+    if isinstance(chapter_payload, dict):
+        explicit_quotes = [
+            normalized
+            for normalized in (
+                normalize_typewriter_quote(item)
+                for item in chapter_payload.get("emphasis_quotes", [])
+            )
+            if normalized is not None
+        ]
+
+    def merge_effects(*base_effects: dict[str, Any]) -> list[dict[str, Any]]:
+        if explicit_quotes:
+            filtered_base_effects = [effect for effect in base_effects if effect.get("type") != "typewriter_quote"]
+            has_camera_push = any(effect.get("type") == "camera_push" for effect in filtered_base_effects)
+            return [
+                *filtered_base_effects,
+                *explicit_quotes,
+                *([] if has_camera_push else [{"type": "camera_push", "intensity": "high" if index == 0 else "medium"}]),
+            ]
+        return list(base_effects)
+
     if index == 0 or any(keyword in combined for keyword in ("问题", "危险", "冲突", "异常", "开场")):
-        return [
+        opening_quote = fallback_quote_text(lead_hook, chapter_title, chapter_goal, max_length=30)
+        return merge_effects(
             {"type": "headline_punch", "intensity": "high"},
             {
                 "type": "typewriter_quote",
-                "text": "平台不是更懂你",
+                "text": opening_quote,
                 "anchor": "upper_center",
                 "chars_per_second": 8,
                 "start_offset_seconds": 0.0,
-                "duration_seconds": 3.8,
+                "duration_seconds": min(max(len(opening_quote) / 5.2, 2.8), 4.6),
             },
             {"type": "camera_push", "intensity": "high"},
-        ]
+        )
     if any(keyword in combined for keyword in ("案例", "offer", "证明", "例子")):
-        return [
+        proof_quote = fallback_quote_text(chapter_title, chapter_goal, max_length=24)
+        return merge_effects(
             {"type": "proof_focus", "intensity": "medium"},
             {
                 "type": "typewriter_quote",
-                "text": "平台没有在帮你逼近真相",
+                "text": proof_quote,
                 "anchor": "upper_center",
                 "chars_per_second": 9,
                 "start_offset_seconds": 0.0,
-                "duration_seconds": 3.1,
+                "duration_seconds": min(max(len(proof_quote) / 5.2, 2.6), 4.0),
                 "target_role": "keyart",
             },
             {"type": "camera_push", "intensity": "medium"},
-        ]
+        )
     if any(keyword in combined for keyword in ("框架", "步骤", "模板", "四步")):
-        return [
+        framework_quote = fallback_quote_text(chapter_title, chapter_goal, max_length=24)
+        return merge_effects(
             {"type": "framework_stack", "intensity": "medium"},
             {
                 "type": "typewriter_quote",
-                "text": "看目标 / 查来源 / 补反例 / 离开 feed 验证",
+                "text": framework_quote,
                 "anchor": "upper_center",
                 "chars_per_second": 9,
                 "start_offset_seconds": 0.0,
-                "duration_seconds": 4.0,
+                "duration_seconds": min(max(len(framework_quote) / 5.2, 2.8), 4.2),
             },
             {"type": "camera_push", "intensity": "medium"},
-        ]
+        )
     if any(keyword in combined for keyword in ("动作", "信号", "退出")):
-        return [
+        action_quote = fallback_quote_text(chapter_title, chapter_goal, max_length=20)
+        return merge_effects(
             {"type": "key_phrase_glow", "intensity": "medium"},
             {
                 "type": "typewriter_quote",
-                "text": "先退出 feed",
+                "text": action_quote,
                 "anchor": "center",
                 "chars_per_second": 7,
                 "start_offset_seconds": 0.0,
-                "duration_seconds": 2.6,
+                "duration_seconds": min(max(len(action_quote) / 5.0, 2.4), 3.4),
             },
+            {"type": "camera_push", "intensity": "medium"},
+        )
+    if explicit_quotes:
+        return [
+            {"type": "key_phrase_glow", "intensity": "medium"},
+            *explicit_quotes,
             {"type": "camera_push", "intensity": "medium"},
         ]
     return [
@@ -141,7 +236,97 @@ def build_emphasis_fx(
 
 
 def motion_recipe(asset_type: str) -> str:
-    return "ken_burns_push" if asset_type == "graphics-card" else "steady_crop"
+    if asset_type in DISALLOWED_PRIMARY_ASSET_TYPES:
+        return "ken_burns_push"
+    return "steady_crop"
+
+
+def infer_media_type(raw_path: str | None) -> str:
+    suffix = Path(str(raw_path or "")).suffix.lower()
+    if suffix in VIDEO_SUFFIXES:
+        return "video"
+    if suffix in IMAGE_SUFFIXES:
+        return "image"
+    return "image"
+
+
+def choose_primary_asset(scene_asset: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    project_root = Path(scene_asset.get("__project_root__") or "")
+    proof_asset = scene_asset.get("proof_asset") if isinstance(scene_asset.get("proof_asset"), dict) else {}
+    supporting_b_roll = scene_asset.get("supporting_b_roll") if isinstance(scene_asset.get("supporting_b_roll"), list) else []
+    fallback_graphics = scene_asset.get("fallback_graphics") if isinstance(scene_asset.get("fallback_graphics"), list) else []
+
+    proof_path = str(proof_asset.get("path") or "").strip()
+    proof_type = str(proof_asset.get("type") or "").strip()
+    if proof_path and proof_type not in DISALLOWED_PRIMARY_ASSET_TYPES:
+        return (
+            {
+                "path": proof_path,
+                "type": proof_type,
+                "role": "proof" if proof_type == "generated-keyart" else "primary",
+                "source": "proof_asset",
+            },
+            [],
+        )
+
+    for item in supporting_b_roll:
+        if not isinstance(item, dict):
+            continue
+        asset_path = str(item.get("asset_path") or "").strip()
+        if not asset_path:
+            continue
+        return (
+            {
+                "path": asset_path,
+                "type": infer_media_type(asset_path),
+                "role": "background_visual",
+                "source": "supporting_b_roll",
+            },
+            ["primary_visual_promoted_from_supporting_b_roll"] if proof_path else [],
+        )
+
+    for raw_path in fallback_graphics:
+        fallback_path = str(raw_path or "").strip()
+        if not fallback_path:
+            continue
+        expanded_candidates = expand_candidates(project_root, fallback_path) if str(project_root) else []
+        if expanded_candidates:
+            candidate = expanded_candidates[0]
+            if candidate.name.startswith("card-"):
+                continue
+            return (
+                {
+                    "path": str(candidate.relative_to(project_root)),
+                    "type": infer_media_type(str(candidate.relative_to(project_root))),
+                    "role": "fallback_visual",
+                    "source": "fallback_graphics",
+                },
+                ["primary_visual_promoted_from_fallback_graphics"],
+            )
+        if Path(fallback_path).name.startswith("card-"):
+            continue
+        return (
+            {
+                "path": fallback_path,
+                "type": infer_media_type(fallback_path),
+                "role": "fallback_visual",
+                "source": "fallback_graphics",
+            },
+            ["primary_visual_promoted_from_fallback_graphics"],
+        )
+
+    warnings: list[str] = []
+    if proof_path:
+        warnings.append("pure_text_card_fallback_only")
+    return (
+        {
+            "path": proof_path or None,
+            "type": proof_type or "graphics-card",
+            "role": "fallback_text_card",
+            "source": "proof_asset",
+        },
+        warnings,
+    )
 
 
 def main() -> int:
@@ -163,9 +348,9 @@ def main() -> int:
     chapter_outline = [item for item in packet.get("chapter_outline", []) if isinstance(item, dict)]
     for index, chapter in enumerate(chapter_outline):
         chapter_id = str(chapter.get("chapter_id") or f"ch{index + 1}")
-        scene_asset = asset_chapters.get(chapter_id, {})
-        proof_asset = scene_asset.get("proof_asset") if isinstance(scene_asset.get("proof_asset"), dict) else {}
-        asset_type = str(proof_asset.get("type") or "graphics-card")
+        scene_asset = {**asset_chapters.get(chapter_id, {}), "__project_root__": str(project_root)}
+        primary_asset, visual_warnings = choose_primary_asset(scene_asset)
+        asset_type = str(primary_asset.get("type") or "image")
         chapter_title = str(chapter.get("title") or "")
         chapter_goal = str(chapter.get("chapter_goal") or chapter.get("summary") or scene_asset.get("scene_goal") or "")
 
@@ -175,16 +360,27 @@ def main() -> int:
                 "chapter_id": chapter_id,
                 "scene_title": chapter_title,
                 "scene_goal": chapter_goal,
-                "primary_asset": {
-                    "path": proof_asset.get("path"),
-                    "type": asset_type,
-                },
+                "primary_asset": primary_asset,
                 "supporting_assets": scene_asset.get("supporting_b_roll", []),
                 "motion_recipe": motion_recipe(asset_type),
                 "transition_in": "cold_open_cut" if index == 0 else "chapter_pulse",
                 "transition_out": "resolve_hold" if index == len(chapter_outline) - 1 else "content_lift",
-                "subtitle_mode": "narrated_hardsub",
-                "emphasis_fx": build_emphasis_fx(chapter_title, chapter_goal, index=index, lead_hook=lead_hook),
+                "subtitle_mode": "bilingual_hardsub",
+                "subtitle_layout": "zh_en_dual_line",
+                "visual_treatment": {
+                    "base_visual_required": True,
+                    "pure_text_card_allowed": False,
+                    "overlay_text_allowed": True,
+                    "preferred_overlay_anchor": "upper_center",
+                    "warnings": visual_warnings,
+                },
+                "emphasis_fx": build_emphasis_fx(
+                    chapter_title,
+                    chapter_goal,
+                    index=index,
+                    lead_hook=lead_hook,
+                    chapter_payload=chapter,
+                ),
             }
         )
 

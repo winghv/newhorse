@@ -176,8 +176,10 @@ def test_audit_artifacts_builds_registry_and_marks_gaps(tmp_path: Path) -> None:
     assert "emphasis_fx_plan" in video_pkg["missing_recommended"]
     assert "scene_assembly_report" in video_pkg["missing_recommended"]
     assert "bilibili_hook_patterns" in video_pkg["missing_recommended"]
+    assert "reference_script_patterns" in video_pkg["missing_recommended"]
     assert "attention_structure_template" in video_pkg["missing_recommended"]
     assert "follow_conversion_hooks" in video_pkg["missing_recommended"]
+    assert "script_polish_packet" in video_pkg["missing_recommended"]
     assert "opening_scorecard" in video_pkg["missing_recommended"]
 
     assert note_pkg["content_type"] == "note"

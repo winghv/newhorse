@@ -180,6 +180,8 @@ def build_requirements(
         requirements.append(Requirement("asset_ingest_manifest", "sources/asset-ingest-manifest.json", True))
         requirements.append(Requirement("chapter_coverage_report", "sources/chapter-coverage-report.json", publish_stage_started))
         requirements.append(Requirement("clip_query_sheet", "sources/clip-query-sheet.md", False))
+        requirements.append(Requirement("reference_script_patterns", "benchmarks/reference-script-patterns.json", False))
+        requirements.append(Requirement("script_polish_packet", "content/script-polish-packet.json", False))
     if "bilibili" in platforms:
         requirements.append(Requirement("bilibili_hook_patterns", "benchmarks/bilibili-hook-patterns.json", False))
         requirements.append(Requirement("attention_structure_template", "angles/attention-structure-template.json", False))

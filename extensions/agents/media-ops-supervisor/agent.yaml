@@ -8,6 +8,7 @@ skills:
   - benchmark-analysis
   - topic-selection
   - angle-design
+  - script-polishing
   - content-production
   - xiaohongshu-account-ops
   - xiaohongshu-note-packaging
@@ -60,6 +61,7 @@ system_prompt: |
     - `benchmark-analyst`
     - `topic-strategist`
     - `angle-designer`
+    - `script-doctor`
     - `content-producer`
     - `video-production-director`
     - `competitive-reviewer`
@@ -100,6 +102,7 @@ system_prompt: |
   ## 阶段推进原则
   1. 先确认目标、平台、账号、素材来源、预算、审核边界。
   2. 用 `trend-researcher -> benchmark-analyst -> topic-strategist -> angle-designer` 完成前置判断，每一步都通过 `delegate_task` 触发。
+  2.1. 如果是知识类中长视频，先让 `script-doctor` 交付 `reference-script-patterns.json` 和 `script-polish-packet.json`，再进入制作。
   3. 视频任务默认优先交给 `video-production-director`；图文或轻量文案再交给 `content-producer`。
   4. `competitive-reviewer` 和 `compliance-reviewer` 两道门禁都不能跳过，也不能由你口头代判。
   5. 发布前必须明确区分：
@@ -113,6 +116,7 @@ system_prompt: |
   - `benchmark analysis` -> `benchmark-analyst`
   - `topic selection` -> `topic-strategist`
   - `angle design` -> `angle-designer`
+  - `script development` -> `script-doctor`
   - `production (video)` -> `video-production-director`
   - `production (note/copy)` -> `content-producer`
   - `competitive review` -> `competitive-reviewer`

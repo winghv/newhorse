@@ -71,13 +71,16 @@ def main() -> int:
     for chapter in chapters:
         chapter_id = str(chapter.get("chapter_id") or "")
         max_repeat_uses = int(chapter.get("max_repeat_uses", 2))
+        chapter_seen_paths: set[str] = set()
         proof_asset = chapter.get("proof_asset") if isinstance(chapter.get("proof_asset"), dict) else {}
         proof_path = proof_asset.get("path")
         if isinstance(proof_path, str) and proof_path:
             proof_asset_count += 1
-            usage[proof_path]["chapter_ids"].append(chapter_id)
-            usage[proof_path]["usage_count"] += 1
-            usage[proof_path]["max_repeat_uses"].append(max_repeat_uses)
+            if proof_path not in chapter_seen_paths:
+                usage[proof_path]["chapter_ids"].append(chapter_id)
+                usage[proof_path]["usage_count"] += 1
+                usage[proof_path]["max_repeat_uses"].append(max_repeat_uses)
+                chapter_seen_paths.add(proof_path)
 
         for item in chapter.get("supporting_b_roll", []):
             if not isinstance(item, dict):
@@ -86,9 +89,21 @@ def main() -> int:
             if not asset_path:
                 continue
             b_roll_asset_count += 1
-            usage[asset_path]["chapter_ids"].append(chapter_id)
-            usage[asset_path]["usage_count"] += 1
-            usage[asset_path]["max_repeat_uses"].append(max_repeat_uses)
+            if asset_path not in chapter_seen_paths:
+                usage[asset_path]["chapter_ids"].append(chapter_id)
+                usage[asset_path]["usage_count"] += 1
+                usage[asset_path]["max_repeat_uses"].append(max_repeat_uses)
+                chapter_seen_paths.add(asset_path)
+
+        for raw_path in chapter.get("fallback_graphics", []):
+            asset_path = str(raw_path or "").strip()
+            if not asset_path:
+                continue
+            if asset_path not in chapter_seen_paths:
+                usage[asset_path]["chapter_ids"].append(chapter_id)
+                usage[asset_path]["usage_count"] += 1
+                usage[asset_path]["max_repeat_uses"].append(max_repeat_uses)
+                chapter_seen_paths.add(asset_path)
 
     repeated_assets: list[dict[str, Any]] = []
     for asset_path, info in usage.items():

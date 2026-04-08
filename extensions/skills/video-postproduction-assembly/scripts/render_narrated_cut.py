@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import subprocess
@@ -21,6 +22,16 @@ DEFAULT_HOOK_BGM_MIN_SECONDS = 10.0
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+@functools.lru_cache(maxsize=None)
+def ffmpeg_filter_available(filter_name: str) -> bool:
+    try:
+        result = run_command(["ffmpeg", "-hide_banner", "-filters"])
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    pattern = re.compile(rf"^\s*[\.A-Z]+\s+{re.escape(filter_name)}(?:\s|$)", flags=re.MULTILINE)
+    return bool(pattern.search(result.stdout))
 
 
 def ffprobe_json(path: Path) -> dict[str, Any]:
@@ -92,13 +103,29 @@ def clamp(value: float, lower: float, upper: float) -> float:
 
 def procedural_sfx_duration(preset: str) -> float:
     if preset == "impact_hit":
-        return 0.32
-    if preset == "whoosh_riser":
-        return 0.65
-    if preset == "typing_burst":
         return 0.42
+    if preset == "sub_hit":
+        return 0.28
+    if preset == "whoosh_riser":
+        return 0.82
+    if preset == "typing_burst":
+        return 0.48
+    if preset == "typewriter_clack":
+        return 0.14
+    if preset == "typewriter_key":
+        return 0.105
+    if preset == "typewriter_key_soft":
+        return 0.095
+    if preset == "typewriter_key_tail":
+        return 0.135
+    if preset == "glitch_stab":
+        return 0.22
+    if preset == "reverse_suck":
+        return 0.44
+    if preset == "braam_hit":
+        return 0.96
     if preset == "ordinal_tick":
-        return 0.16
+        return 0.19
     raise ValueError(f"Unsupported procedural SFX preset: {preset}")
 
 
@@ -113,17 +140,52 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             "-f",
             "lavfi",
             "-i",
-            f"anoisesrc=color=white:amplitude=0.25:duration={duration_seconds:.3f}:r=48000",
+            f"anoisesrc=color=white:amplitude=0.28:duration={duration_seconds:.3f}:r=48000",
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=110:duration={duration_seconds:.3f}:sample_rate=48000",
+            f"sine=frequency=86:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=176:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=900,lowpass=f=7600,volume=0.7,"
-                "afade=t=out:st=0.12:d=0.20[noise];"
-                "[1:a]volume=0.8,afade=t=out:st=0.05:d=0.27[bass];"
-                "[noise][bass]amix=inputs=2:normalize=0[aout]"
+                "[0:a]highpass=f=800,lowpass=f=9000,volume=0.7,"
+                "afade=t=in:st=0:d=0.005,afade=t=out:st=0.11:d=0.31[noise];"
+                "[1:a]volume=1.0,afade=t=in:st=0:d=0.003,afade=t=out:st=0.05:d=0.37[sub];"
+                "[2:a]volume=0.28,afade=t=in:st=0:d=0.002,afade=t=out:st=0.04:d=0.24[presence];"
+                "[noise][sub][presence]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "sub_hit":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.22:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=74:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=148:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=640,lowpass=f=5400,volume=0.58,"
+                "afade=t=in:st=0:d=0.001,afade=t=out:st=0.05:d=0.16[noise];"
+                "[1:a]volume=1.05,afade=t=in:st=0:d=0.001,afade=t=out:st=0.03:d=0.22[sub];"
+                "[2:a]volume=0.22,afade=t=in:st=0:d=0.001,afade=t=out:st=0.03:d=0.16[harmonic];"
+                "[noise][sub][harmonic]amix=inputs=3:normalize=0,alimiter=limit=0.97[aout]"
             ),
             "-map",
             "[aout]",
@@ -138,17 +200,22 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             "-f",
             "lavfi",
             "-i",
-            f"anoisesrc=color=pink:amplitude=0.18:duration={duration_seconds:.3f}:r=48000",
+            f"anoisesrc=color=pink:amplitude=0.22:duration={duration_seconds:.3f}:r=48000",
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=560:duration={duration_seconds:.3f}:sample_rate=48000",
+            f"sine=frequency=520:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1240:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=300,lowpass=f=5200,volume=0.42,"
-                "afade=t=in:st=0:d=0.18,afade=t=out:st=0.36:d=0.29[noise];"
-                "[1:a]volume=0.18,afade=t=in:st=0:d=0.22,afade=t=out:st=0.38:d=0.27[tone];"
-                "[noise][tone]amix=inputs=2:normalize=0[aout]"
+                "[0:a]highpass=f=220,lowpass=f=6400,volume=0.55,"
+                "afade=t=in:st=0:d=0.24,afade=t=out:st=0.49:d=0.33[noise];"
+                "[1:a]volume=0.16,afade=t=in:st=0:d=0.26,afade=t=out:st=0.5:d=0.3[tone_lo];"
+                "[2:a]volume=0.12,afade=t=in:st=0:d=0.34,afade=t=out:st=0.58:d=0.22[tone_hi];"
+                "[noise][tone_lo][tone_hi]amix=inputs=3:normalize=0[aout]"
             ),
             "-map",
             "[aout]",
@@ -163,22 +230,232 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             "-f",
             "lavfi",
             "-i",
-            f"anoisesrc=color=white:amplitude=0.08:duration={duration_seconds:.3f}:r=48000",
+            f"anoisesrc=color=white:amplitude=0.16:duration={duration_seconds:.3f}:r=48000",
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=3100:duration={duration_seconds:.3f}:sample_rate=48000",
+            f"sine=frequency=2860:duration={duration_seconds:.3f}:sample_rate=48000",
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=1850:duration={duration_seconds:.3f}:sample_rate=48000",
+            f"sine=frequency=1710:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=820:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=2200,lowpass=f=8200,volume=0.4,"
-                "afade=t=in:st=0:d=0.002,afade=t=out:st=0.055:d=0.05[noise];"
-                "[1:a]volume=0.42,afade=t=in:st=0:d=0.001,afade=t=out:st=0.035:d=0.035[tone_hi];"
-                "[2:a]volume=0.18,afade=t=in:st=0:d=0.001,afade=t=out:st=0.05:d=0.05[tone_lo];"
+                "[0:a]highpass=f=1800,lowpass=f=9000,volume=0.62,"
+                "afade=t=in:st=0:d=0.001,afade=t=out:st=0.08:d=0.07[noise];"
+                "[1:a]volume=0.38,afade=t=in:st=0:d=0.001,afade=t=out:st=0.05:d=0.05[tone_hi];"
+                "[2:a]volume=0.22,afade=t=in:st=0:d=0.001,afade=t=out:st=0.07:d=0.06[tone_lo];"
+                "[3:a]volume=0.14,afade=t=in:st=0:d=0.001,afade=t=out:st=0.06:d=0.08[body];"
+                "[noise][tone_hi][tone_lo][body]amix=inputs=4:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "typewriter_clack":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.2:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=2380:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1160:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=2600,lowpass=f=9800,volume=0.9,"
+                "afade=t=in:st=0:d=0.0008,afade=t=out:st=0.028:d=0.03[noise];"
+                "[1:a]volume=0.28,afade=t=in:st=0:d=0.0008,afade=t=out:st=0.02:d=0.025[tone_hi];"
+                "[2:a]volume=0.14,afade=t=in:st=0:d=0.0008,afade=t=out:st=0.024:d=0.032[tone_lo];"
                 "[noise][tone_hi][tone_lo]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "typewriter_key":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.18:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=2140:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=980:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=3000,lowpass=f=10800,volume=0.86,"
+                "afade=t=in:st=0:d=0.0006,afade=t=out:st=0.014:d=0.024[click];"
+                "[1:a]volume=0.18,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.010:d=0.018[metal];"
+                "[2:a]volume=0.14,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.016:d=0.028[body];"
+                "[click][metal][body]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "typewriter_key_soft":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.14:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1760:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=820:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=2600,lowpass=f=9200,volume=0.7,"
+                "afade=t=in:st=0:d=0.0006,afade=t=out:st=0.012:d=0.022[click];"
+                "[1:a]volume=0.12,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.010:d=0.016[metal];"
+                "[2:a]volume=0.1,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.012:d=0.024[body];"
+                "[click][metal][body]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "typewriter_key_tail":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.2:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=2280:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1040:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=2800,lowpass=f=10800,volume=0.92,"
+                "afade=t=in:st=0:d=0.0006,afade=t=out:st=0.016:d=0.03[click];"
+                "[1:a]volume=0.2,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.012:d=0.024[metal];"
+                "[2:a]volume=0.16,afade=t=in:st=0:d=0.0006,afade=t=out:st=0.018:d=0.036[body];"
+                "[click][metal][body]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "glitch_stab":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=white:amplitude=0.18:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=1980:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=120:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=1400,lowpass=f=8600,volume=0.72,"
+                "afade=t=in:st=0:d=0.001,afade=t=out:st=0.05:d=0.09[noise];"
+                "[1:a]volume=0.34,afade=t=in:st=0:d=0.001,afade=t=out:st=0.04:d=0.06[tone_hi];"
+                "[2:a]volume=0.36,afade=t=in:st=0:d=0.001,afade=t=out:st=0.03:d=0.16[sub];"
+                "[noise][tone_hi][sub]amix=inputs=3:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "reverse_suck":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=pink:amplitude=0.15:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=840:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=420,lowpass=f=7600,volume=0.5,"
+                "afade=t=in:st=0:d=0.24,afade=t=out:st=0.3:d=0.14[noise];"
+                "[1:a]volume=0.1,afade=t=in:st=0:d=0.24,afade=t=out:st=0.32:d=0.12[tone];"
+                "[noise][tone]amix=inputs=2:normalize=0[aout]"
+            ),
+            "-map",
+            "[aout]",
+            "-c:a",
+            "pcm_s16le",
+            str(output_path),
+        ]
+    elif preset == "braam_hit":
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anoisesrc=color=pink:amplitude=0.2:duration={duration_seconds:.3f}:r=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=58:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=116:duration={duration_seconds:.3f}:sample_rate=48000",
+            "-filter_complex",
+            (
+                "[0:a]highpass=f=220,lowpass=f=5400,volume=0.42,"
+                "afade=t=in:st=0:d=0.005,afade=t=out:st=0.34:d=0.56[noise];"
+                "[1:a]volume=1.05,afade=t=in:st=0:d=0.003,afade=t=out:st=0.18:d=0.72[sub];"
+                "[2:a]volume=0.24,afade=t=in:st=0:d=0.003,afade=t=out:st=0.15:d=0.48[harmonic];"
+                "[noise][sub][harmonic]amix=inputs=3:normalize=0[aout]"
             ),
             "-map",
             "[aout]",
@@ -193,16 +470,16 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
             "-f",
             "lavfi",
             "-i",
-            f"anoisesrc=color=pink:amplitude=0.09:duration={duration_seconds:.3f}:r=48000",
+            f"anoisesrc=color=pink:amplitude=0.12:duration={duration_seconds:.3f}:r=48000",
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=1460:duration={duration_seconds:.3f}:sample_rate=48000",
+            f"sine=frequency=1640:duration={duration_seconds:.3f}:sample_rate=48000",
             "-filter_complex",
             (
-                "[0:a]highpass=f=1800,lowpass=f=6200,volume=0.48,"
-                "afade=t=in:st=0:d=0.004,afade=t=out:st=0.05:d=0.06[noise];"
-                "[1:a]volume=0.24,afade=t=in:st=0:d=0.003,afade=t=out:st=0.04:d=0.05[tone];"
+                "[0:a]highpass=f=1600,lowpass=f=6800,volume=0.56,"
+                "afade=t=in:st=0:d=0.003,afade=t=out:st=0.055:d=0.08[noise];"
+                "[1:a]volume=0.28,afade=t=in:st=0:d=0.002,afade=t=out:st=0.045:d=0.07[tone];"
                 "[noise][tone]amix=inputs=2:normalize=0[aout]"
             ),
             "-map",
@@ -506,6 +783,21 @@ def parse_srt_blocks(path: Path | None) -> list[str]:
     return lines
 
 
+def parse_srt_block_lines(path: Path | None) -> list[list[str]]:
+    if path is None or not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return []
+    blocks = re.split(r"\n\s*\n", text)
+    parsed: list[list[str]] = []
+    for block in blocks:
+        block_lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if len(block_lines) >= 3:
+            parsed.append(block_lines[2:])
+    return parsed
+
+
 def parse_srt_entries(path: Path | None) -> list[dict[str, Any]]:
     if path is None or not path.exists():
         return []
@@ -555,7 +847,7 @@ def detect_silence_ranges(path: Path, *, noise_db: str, min_silence_seconds: flo
     starts = [float(match.group(1)) for match in re.finditer(r"silence_start:\s*([0-9.]+)", stderr)]
     ends = [float(match.group(1)) for match in re.finditer(r"silence_end:\s*([0-9.]+)", stderr)]
     ranges: list[tuple[float, float]] = []
-    for start, end in zip(starts, ends, strict=False):
+    for start, end in zip(starts, ends):
         if end <= start:
             continue
         ranges.append((start, end))
@@ -934,8 +1226,14 @@ def build_subtitle_quality_report(
     subtitle_alignment = qa_report.get("checks", {}).get("subtitle_alignment", {})
     style_pack_raw = plan.get("context", {}).get("subtitle_style_pack")
     style_pack_path = resolve_path(workspace_root, style_pack_raw)
+    style_pack = load_json(style_pack_path)
     style_pack_present = bool(style_pack_path and style_pack_path.exists())
     style_pack_required = bool(style_pack_raw)
+    translation_required = bool(style_pack.get("translation_required"))
+    subtitle_block_lines = parse_srt_block_lines(subtitles)
+    bilingual_cue_count = sum(1 for block in subtitle_block_lines if len(block) >= 2 and any(re.search(r"[A-Za-z]", line) for line in block[1:]))
+    subtitle_cue_count = len(subtitle_block_lines)
+    bilingual_ratio = (bilingual_cue_count / subtitle_cue_count) if subtitle_cue_count else 0.0
 
     status = "pass"
     if subtitle_delivery.get("status") == "block" or subtitle_alignment.get("status") == "block":
@@ -944,6 +1242,8 @@ def build_subtitle_quality_report(
         style_pack_required and not style_pack_present
     ):
         status = "revise"
+    if translation_required and bilingual_ratio < 0.95:
+        status = "revise" if status == "pass" else status
 
     return {
         "status": status,
@@ -959,6 +1259,13 @@ def build_subtitle_quality_report(
                 "status": "pass" if (style_pack_present or not style_pack_required) else "revise",
                 "present": style_pack_present,
                 "required": style_pack_required,
+            },
+            "bilingual_delivery": {
+                "status": "pass" if (not translation_required or bilingual_ratio >= 0.95) else "revise",
+                "required": translation_required,
+                "cue_count": subtitle_cue_count,
+                "bilingual_cue_count": bilingual_cue_count,
+                "bilingual_ratio": round(bilingual_ratio, 3),
             },
         },
     }
@@ -982,10 +1289,26 @@ def build_scene_assembly_report(
     auto_base_plan = load_json(auto_base_plan_path if auto_base_plan_path.exists() else None)
 
     scene_count = len(scene_manifest.get("scenes", [])) if isinstance(scene_manifest.get("scenes"), list) else 0
+    scenes = scene_manifest.get("scenes", []) if isinstance(scene_manifest.get("scenes"), list) else []
     transition_count = len(transition_plan.get("transitions", [])) if isinstance(transition_plan.get("transitions"), list) else 0
     fx_scene_count = len(emphasis_fx_plan.get("scene_fx", [])) if isinstance(emphasis_fx_plan.get("scene_fx"), list) else 0
     image_slot_ratio = auto_base_plan.get("quality", {}).get("metrics", {}).get("image_slot_ratio")
     auto_base_quality_status = auto_base_plan.get("quality", {}).get("status")
+    pure_text_primary_scene_ids = [
+        str(scene.get("scene_id") or "")
+        for scene in scenes
+        if isinstance(scene, dict)
+        and isinstance(scene.get("primary_asset"), dict)
+        and (
+            str(scene["primary_asset"].get("type") or "") in {"graphics-card", "text-card", "text-only-card"}
+            or Path(str(scene["primary_asset"].get("path") or "")).name.startswith("card-")
+        )
+    ]
+    bilingual_scene_count = sum(
+        1
+        for scene in scenes
+        if isinstance(scene, dict) and str(scene.get("subtitle_mode") or "").startswith("bilingual")
+    )
 
     status = "pass"
     if scene_manifest_path and not scene_manifest_path.exists():
@@ -993,6 +1316,10 @@ def build_scene_assembly_report(
     if transition_plan_path and not transition_plan_path.exists():
         status = "revise"
     if emphasis_fx_plan_path and not emphasis_fx_plan_path.exists():
+        status = "revise"
+    if pure_text_primary_scene_ids and status == "pass":
+        status = "revise"
+    if scene_count and bilingual_scene_count < scene_count and status == "pass":
         status = "revise"
     if qa_report.get("status") == "block":
         status = "block"
@@ -1013,6 +1340,8 @@ def build_scene_assembly_report(
             "fx_scene_count": fx_scene_count,
             "auto_base_quality_status": auto_base_quality_status,
             "image_slot_ratio": image_slot_ratio,
+            "pure_text_primary_scene_count": len(pure_text_primary_scene_ids),
+            "bilingual_scene_ratio": round((bilingual_scene_count / scene_count) if scene_count else 1.0, 3),
         },
         "checks": {
             "scene_manifest_present": {
@@ -1027,6 +1356,15 @@ def build_scene_assembly_report(
                 "status": "pass" if (emphasis_fx_plan_path and emphasis_fx_plan_path.exists()) or emphasis_fx_plan_path is None else "revise",
                 "present": bool(emphasis_fx_plan_path and emphasis_fx_plan_path.exists()),
             },
+            "plain_text_cards_removed": {
+                "status": "pass" if not pure_text_primary_scene_ids else "revise",
+                "scene_ids": pure_text_primary_scene_ids,
+            },
+            "bilingual_subtitle_mode": {
+                "status": "pass" if (scene_count == 0 or bilingual_scene_count == scene_count) else "revise",
+                "scene_count": scene_count,
+                "bilingual_scene_count": bilingual_scene_count,
+            },
         },
     }
 
@@ -1035,6 +1373,7 @@ def build_filter_complex(
     plan: dict[str, Any],
     subtitles: Path | None,
     source_duration: float,
+    source_video_fps: float | None,
     voiceover_duration: float,
     retain_original_audio: bool,
     source_has_audio: bool,
@@ -1070,11 +1409,19 @@ def build_filter_complex(
     fps = retime.get("target_fps")
     video_chain = [f"setpts={video_pts_factor:.6f}*PTS"]
     if fps:
-        video_chain.append(f"fps={int(fps)}")
+        target_fps = int(fps)
+        if (
+            source_video_fps
+            and float(source_video_fps) + 0.25 < target_fps
+            and ffmpeg_filter_available("minterpolate")
+        ):
+            video_chain.append(f"minterpolate=fps={target_fps}:mi_mode=mci:mc_mode=aobmc:vsbmc=1")
+        else:
+            video_chain.append(f"fps={target_fps}")
 
     filters: list[str] = [f"[0:v]{','.join(video_chain)}[v_base]"]
 
-    if subtitles is not None:
+    if subtitles is not None and ffmpeg_filter_available("subtitles"):
         subtitle_filter = f"subtitles='{quote_filter_value(str(subtitles))}'"
         subtitle_style = plan.get("subtitle_style")
         if subtitle_style:
@@ -1120,7 +1467,7 @@ def build_filter_complex(
 
     sfx_mix_label: str | None = None
     if sfx_bed_present:
-        sfx_stem_gain_db = float(mix.get("sfx_stem_gain_db", 4.5))
+        sfx_stem_gain_db = float(mix.get("sfx_stem_gain_db", 6.0))
         sfx_chain = [
             "asetpts=PTS-STARTPTS",
             f"volume={sfx_stem_gain_db}dB",
@@ -1255,6 +1602,8 @@ def main() -> int:
     ensure_parent(subtitle_quality_report_output)
     ensure_parent(scene_assembly_report_output)
 
+    source_probe = ffprobe_json(source_video)
+    source_video_metadata = video_stream_info(source_probe)
     source_duration = media_duration(source_video)
     voiceover_duration = media_duration(voiceover_audio)
     source_has_audio = has_audio_stream(source_video)
@@ -1272,6 +1621,7 @@ def main() -> int:
         plan=plan,
         subtitles=subtitles,
         source_duration=source_duration,
+        source_video_fps=source_video_metadata.get("fps"),
         voiceover_duration=voiceover_duration,
         retain_original_audio=retain_original_audio,
         source_has_audio=source_has_audio,
@@ -1282,7 +1632,7 @@ def main() -> int:
     video_codec = plan.get("video_codec", "libx264")
     audio_codec = plan.get("audio_codec", "aac")
     crf = str(plan.get("crf", 22))
-    preset = str(plan.get("preset", "ultrafast"))
+    preset = str(plan.get("preset", "veryfast"))
 
     ffmpeg_command = [
         "ffmpeg",
@@ -1316,7 +1666,8 @@ def main() -> int:
             audio_codec,
             "-movflags",
             "+faststart",
-            "-shortest",
+            "-t",
+            f"{voiceover_duration:.3f}",
             str(output_video),
         ]
     )

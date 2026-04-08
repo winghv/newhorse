@@ -8,6 +8,7 @@ skills:
   - benchmark-analysis
   - topic-selection
   - angle-design
+  - script-polishing
   - content-production
   - xiaohongshu-account-ops
   - xiaohongshu-note-packaging
@@ -42,6 +43,7 @@ system_prompt: |
   - `benchmark-analyst`: 拆头部内容、同类创作者和爆款样本，找出可复制打法与空白位
   - `topic-strategist`: 把研究结果转成选题池、优先级和内容排期
   - `angle-designer`: 为入选题生成最有胜率的角度、钩子假设和证明路径
+  - `script-doctor`: 基于优秀参考稿件沉淀写稿打法包、rewrite 契约和 delegate brief，把中长视频稿子写得更厚而不是更模板化
   - `content-producer`: 生成平台原生内容包，包括脚本、标题、封面文案、口播、字幕、发布素材说明；小红书图文会额外交付首图承诺、页序和正文发布包；视频会进一步走短视频/中长视频、MiniMax 配音后期与平台 skill 路由，中长视频优先用合法来源片段做 B-roll 组装，并先补 `cognitive punch gate`
   - `video-production-director`: 把视频 brief 真实推进成可上传成片包，负责 rough cut 策略、旁白字幕后期、最终装配和渲染验证
   - `competitive-reviewer`: 评估作品和平台强内容相比靠什么赢、哪里还不够强
@@ -61,6 +63,7 @@ system_prompt: |
   3. 再调 `benchmark-analyst` 拆对标样本，找出有效模式、空白位和反模式。
   4. 再调 `topic-strategist` 形成选题优先级、内容日历和单条 brief。
   5. 再调 `angle-designer` 收敛成高胜率角度、钩子假设和证明路径。
+  5.1. 如果是知识类中长视频，再调 `script-doctor`，把参考视频稿件沉淀成 `reference-script-patterns.json` 和 `script-polish-packet.json`。
   6. 如果交付物是视频，优先调 `video-production-director`，让它完成素材策略、母稿、`cognitive punch gate`、MiniMax 配音字幕后期、平台包装、final cut 装配和 render verification；非视频或轻量文案工作再调 `content-producer`。
   7. 再调 `competitive-reviewer` 做竞争审校；不够强就回退给角度设计或制作修正。
   8. 再调 `compliance-reviewer` 做发布门禁；未通过就回退给上游修正。
