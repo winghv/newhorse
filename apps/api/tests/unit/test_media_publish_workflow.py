@@ -91,10 +91,6 @@ def make_publishable_media_package(tmp_path: Path) -> Path:
     )
     (project_root / "content" / "final-cut" / "pilot-v3-auto-narrated.mp4").write_bytes(b"final-cut")
     (project_root / "content" / "postproduction" / "voice.mp3").write_bytes(b"voice")
-    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
-        "1\n00:00:00,000 --> 00:00:01,000\nhello\n",
-        encoding="utf-8",
-    )
     (project_root / "content" / "postproduction" / "voice-performance-plan.json").write_text(
         json.dumps({"segments": [{"emotion": "focused"}]}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -104,7 +100,22 @@ def make_publishable_media_package(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (project_root / "content" / "postproduction" / "voiceover-profile.json").write_text(
-        json.dumps({"render_targets": {"voice_performance_plan": "content/postproduction/voice-performance-plan.json"}}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(
+            {
+                "render_targets": {
+                    "voice_performance_plan": "content/postproduction/voice-performance-plan.json",
+                    "voiceover_audio": "content/postproduction/voice.mp3",
+                    "subtitle_draft": "content/postproduction/subtitles.srt",
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
+        "1\n00:00:00,000 --> 00:00:01,000\nhello\n",
         encoding="utf-8",
     )
     (project_root / "content" / "postproduction" / "subtitle-style-pack.json").write_text(
@@ -142,6 +153,10 @@ def make_publishable_media_package(tmp_path: Path) -> Path:
     )
     (project_root / "assets" / "visual-diversity-report.json").write_text(
         json.dumps({"status": "pass"}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (project_root / "assets" / "visual-production-gate.json").write_text(
+        json.dumps({"status": "pass", "reasons": []}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     (project_root / "assets" / "minimax-shot-plan.json").write_text(

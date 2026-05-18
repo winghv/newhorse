@@ -28,6 +28,8 @@ version: 1.0.0
      - `series_lane`
      - `why_now`
      - `lenses`
+     - `audience_job`
+     - `novel_thinking_path`
      - `production_cost`
 2. 结合对标拆解里的空白位、最近几条已发内容和过饱和信号，运行：
 
@@ -52,8 +54,10 @@ python3 extensions/skills/topic-selection/scripts/build_topic_backlog.py \
      - `repeat_risk`
      - `recent_overlap`
      - `reference_signals`
+     - `creative_divergence`
 4. 选出优先级最高的题材。
-5. 为每个入选题输出 brief，并给角度设计阶段留下清晰输入：
+5. 为入选题先补 `planning/creative-divergence-brief.json`，说明这期和最近 `3-5` 条内容在思路、证据、叙事和视觉上如何拉开。
+6. 为每个入选题输出 brief，并给角度设计阶段留下清晰输入：
    - 核心观点
    - 目标受众
    - 平台
@@ -62,6 +66,7 @@ python3 extensions/skills/topic-selection/scripts/build_topic_backlog.py \
    - CTA
    - 禁区
    - 为什么这个题此刻值得做
+   - 这期明确不再复用哪些开头、结构、案例或视觉套路
 
 ## Rules
 
@@ -70,4 +75,6 @@ python3 extensions/skills/topic-selection/scripts/build_topic_backlog.py \
 - 不同平台可以复用主题，但不能复用完全相同的呈现方式
 - 若高分题材缺少关键证据或素材，先标记为待补充
 - 如果最近两条内容已经打过相近主题，要显式扣重合分，避免连续输出“换词复读”
+- 如果候选题没有新的用户任务、证据抓手或叙事装置，即使题面热度高，也不要排到第一优先级
+- 系列内容可以保持栏目结构，但必须说明本期的 `novel_thinking_path` 和 `forbidden_repeats`
 - 选题输出必须能让下游角度设计判断“靠什么赢”

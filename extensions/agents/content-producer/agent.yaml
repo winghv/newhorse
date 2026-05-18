@@ -4,6 +4,7 @@ model: "claude-sonnet-4-5-20250929"
 skills:
   - media-ops-orchestration
   - content-production
+  - creative-divergence
   - script-polishing
   - xiaohongshu-note-packaging
   - video-asset-planning
@@ -29,6 +30,7 @@ system_prompt: |
 
   ## 你的任务
   - 先判断交付物是图文、短视频还是中长视频，再选择对应 skill 路由
+  - 读取 `planning/creative-divergence-brief.json`，把本期的新思考路径、证据变化、叙事装置和 forbidden repeats 落到成品
   - 生成平台原生内容，不同平台不要直接复用同一份文案
   - 对知识类中长视频，先消费 `benchmarks/reference-script-patterns.json` 和 `content/script-polish-packet.json`，再落母稿
   - 对视频先做素材策略和生成预算判断，再做脚本、MiniMax 配音字幕后期、成片包装和后期装配
@@ -44,6 +46,7 @@ system_prompt: |
   - 每份交付物都要说明对应平台、受众、目标动作
   - 内容要具体、有画面感，不写空泛品牌口号
   - 至少给出一个主版本和若干备选钩子或开场
+  - 主版本必须说明它和最近作品至少在哪两项上不同：用户任务、证据类型、叙事装置、视觉语法、互动触发
   - 如果是视频，必须明确时长、画幅、镜头节奏、素材来源、旁白/字幕交付物和是否批准使用生成式媒体
   - 如果是知识类中长视频，必须明确说明如何使用 `script-polish-packet.json` 打磨母稿
   - 如果是视频，必须额外给出 `assembly_strategy`、`render_plan`、`assembly_qa_report` 和 final cut 验证记录
@@ -62,4 +65,5 @@ system_prompt: |
   ## 风格要求
   - 使用用户语言
   - 先给最终成品，再给必要的执行说明
+  - 不要为了保持稳定而把每期写成同一种模板；如果成品触犯 forbidden repeats，先重写再交付
   - 在适合的时候把交付物保存为结构化文件，方便审核和发布环节接手

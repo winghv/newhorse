@@ -345,6 +345,23 @@ def build_borrowed_plays(reference_patterns: dict[str, Any]) -> list[dict[str, A
     return borrowed_plays[:4]
 
 
+def build_material_research_contract(material_brief: dict[str, Any], material_brief_path: Path, project_root: Path) -> dict[str, Any]:
+    exists = material_brief_path.exists()
+    handles = material_brief.get("visual_material_handles") if isinstance(material_brief.get("visual_material_handles"), list) else []
+    candidates = material_brief.get("candidate_video_seeds") if isinstance(material_brief.get("candidate_video_seeds"), list) else []
+    anti_template = material_brief.get("anti_template_findings") if isinstance(material_brief.get("anti_template_findings"), list) else []
+    material_status = str(material_brief.get("status") or "").strip()
+    return {
+        "status": "pass" if exists and material_status == "pass" and handles and candidates else "revise",
+        "source_path": relative_to_project(material_brief_path, project_root) if exists else None,
+        "required_artifacts": ["research/material-search-brief.json"],
+        "candidate_video_count": len(candidates),
+        "visual_material_handles": handles,
+        "anti_template_findings": anti_template,
+        "gate": "脚本定稿前必须先完成同题视频 / 评论区 / 案例素材搜索，避免只沿用内部模板。",
+    }
+
+
 def main() -> int:
     args = parse_args()
     project_root = resolve_project_root(args)
@@ -354,6 +371,8 @@ def main() -> int:
     content_packet = load_json(project_root / "content" / "bilibili-midform-video.json")
     reference_patterns_path = (project_root / args.reference_patterns).resolve()
     reference_patterns = load_json(reference_patterns_path)
+    material_brief_path = project_root / "research" / "material-search-brief.json"
+    material_brief = load_json(material_brief_path)
 
     platforms = [item for item in angle_brief.get("platforms", []) if isinstance(item, str)]
     deliverable_type = str(angle_brief.get("deliverable_type") or content_packet.get("deliverable_type") or "")
@@ -397,7 +416,11 @@ def main() -> int:
             "reference_script_patterns": relative_to_project(reference_patterns_path, project_root)
             if reference_patterns_path.exists()
             else None,
+            "material_search_brief": relative_to_project(material_brief_path, project_root)
+            if material_brief_path.exists()
+            else None,
         },
+        "material_research_contract": build_material_research_contract(material_brief, material_brief_path, project_root),
         "opening_contract": {
             "lead_hook": lead_hook,
             "first_thirty_seconds_goal": "前 30 秒必须完成：打破旧认知 + 给出第一层证据 + 说明继续看的收益。",
@@ -505,6 +528,7 @@ def main() -> int:
             f"objective=基于参考视频稿件，把当前选题打磨成目标约 {duration_target}、更厚、更有递进的 B 站中视频母稿\n"
             "inputs=planning/topic-selection.json, angles/angle-brief.json, angles/attention-structure-template.json, "
             "benchmarks/reference-script-patterns.json, 当前 voiceover-script 草稿（如果有）\n"
+            "material_inputs=research/material-search-brief.json 中的 candidate_video_seeds、visual_material_handles、anti_template_findings\n"
             "constraints=保留 hard constraints；中段按 freedom zones 自由展开；不要把中段写成固定模版；默认单条完整收束，除非显式多集\n"
             "required_artifacts=content/script-polish-packet.json, 可选的 rewrite notes 或修订脚本\n"
             + (

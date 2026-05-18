@@ -59,9 +59,10 @@ version: 1.0.0
 5. 选题阶段输出 `topic backlog` 和 `selected topic`。
 6. 角度设计阶段输出 `angle brief`、`hook hypotheses` 和 `proof plan`。
 6.1. 如果目标平台是 Bilibili 中视频，再补 `angles/attention-structure-template.json` 和 `angles/follow-conversion-hooks.json`。
-7. 剧本打磨阶段输出 `content/script-polish-packet.json`，把 hard constraints、freedom zones、section blueprint、borrowed plays 和 rewrite loop 结构化。
+7. Bilibili 中视频进入剧本打磨前，先运行 `python3 extensions/skills/content-research/scripts/build_bilibili_material_search_brief.py --project-root data/media-ops/<content-id>`，输出 `research/material-search-brief.json`，把同题候选视频、评论区问题、案例和画面素材线索结构化。
+8. 剧本打磨阶段输出 `content/script-polish-packet.json`，把 hard constraints、freedom zones、section blueprint、borrowed plays、material research contract 和 rewrite loop 结构化。
 8. 制作阶段输出 `content packet`，包括平台版本、钩子备选和素材需求。
-8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`voice-performance-plan.json`、`subtitle-style-pack.json`、`audio-cue-sheet.json`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。语音/字幕默认按固定顺序推进：先 `build_tts_handoff.py`，再用 `generate_voiceover_with_timing.py` 生成最终口播音频，再从 `voiceover-segments.json + 最终音频 + segment_*.mp3` 生成 `subtitle_draft`，最后进入 render。
+8. 如果是视频，必须补 `asset_source_map`、`generation_budget_decision`、`subtitle_source`、`voiceover plan`、`voice-performance-plan.json`、`subtitle-style-pack.json`、`audio-cue-sheet.json`、`assembly_strategy`、`render_plan`、`render_manifest`、`publish_metadata` 和 `assembly_qa_report`；如果用了网上片段，还要补 `source_manifest`。语音/字幕默认按固定顺序推进：先让 `assets/visual-production-gate.json` 通过，再 `build_tts_handoff.py`，再用 `generate_voiceover_with_timing.py` 生成最终口播音频，再从 `voiceover-segments.json + 最终音频 + segment_*.mp3` 生成 `subtitle_draft`，最后进入 render。
 9. 如果是解释型中长视频，还必须补 `planning/cognitive-punch-gate.json` 和 `sources/chapter-coverage-report.json`。
 10. 竞争审校阶段输出 `competitive scorecard`、`score_by_dimension`、`total_score`，结论为 `pass / revise / block`。
 10.1. 如果目标平台是 Bilibili 中视频，再补 `review/opening-scorecard.json`。
@@ -74,7 +75,7 @@ version: 1.0.0
 16.1. 对准备进入发布的中视频，先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_workflow_quality_gate.py --project-root data/media-ops/<content-id>`，生成：
    - `review/workflow-quality-gate.json`
    - `review/upgrade-status-board.json`
-17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、MiniMax 镜头预算、TTS handoff、最终口播生成、基于口播的字幕重生成、scene manifest / transition / emphasis 设计、基础时间线重建和 render workflow 整理成一份执行计划。
+17. 对视频内容包，进入装配前先运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，把自动 sourcing、SVG 导出、scene asset planning、visual diversity gate、visual production gate、MiniMax 镜头预算、TTS handoff、最终口播生成、基于口播的字幕重生成、scene manifest / transition / emphasis 设计、基础时间线重建和 render workflow 整理成一份执行计划。
 
 ## Supervisor-Led Delegation Contract
 
@@ -195,7 +196,8 @@ version: 1.0.0
 - 不要跨平台原样复用同一份文案。
 - 视频生成预算属于上游制作约束，不能等到发布前才决定。
 - 解释型视频默认要求旁白和字幕资产；如果故意不用，必须明确说明原因。
-- 中长视频优先用合法来源的网上片段做 B-roll 组装，不默认消耗视频生成额度。
+- 解释型 / 认知类中长视频默认用 `ai-images-only` 主视觉：批量生成无字 16:9 AI 图，再由自动时间线做全屏运动镜头；只有事件、产品、地点、实操演示类内容才默认启用 B-roll。
+- AI 视频只作为高价值 hook / 转折镜头增强，不作为默认覆盖全片方案；视频额度不足时不应回退到文字卡或 mock 素材。
 - 自治模式下，人工录屏和人工导图都不是默认 required artifact；默认先跑结构化 proof pack、自动导图和自动 render。
 - `rebuild_timeline` 在没有 rough cut 时，必须优先尝试自动拼 `auto-base-cut.mp4`，而不是把项目退回人工剪辑。
 - `rebuild_timeline` 进入 live 准备前，必须确认 `auto-base-cut-plan.json` 已生成且 `quality.status = pass`。

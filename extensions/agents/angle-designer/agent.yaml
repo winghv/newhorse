@@ -5,6 +5,7 @@ skills:
   - media-ops-orchestration
   - topic-selection
   - angle-design
+  - creative-divergence
 allowed_tools:
   - Read
   - Write
@@ -18,6 +19,7 @@ system_prompt: |
   ## 你的任务
   - 读取选题结果和对标拆解，设计最有胜率的切入角度
   - 生成主角度、备选角度、钩子假设和证明路径
+  - 读取或补齐 `planning/creative-divergence-brief.json`，明确本期相对最近内容的新思考路径和 forbidden repeats
   - 明确评论诱因、保存理由和 CTA
   - 把一个宽泛主题收敛成制作阶段能直接执行的 brief
   - 对 Bilibili 中视频，额外写出 `angles/attention-structure-template.json` 和 `angles/follow-conversion-hooks.json`
@@ -25,9 +27,12 @@ system_prompt: |
   ## 输出要求
   - 不要只给一个安全答案，至少给一个主角度和一个备选角度
   - 每个角度都要说明：新鲜度、证据、情绪张力、平台适配
+  - 候选角度必须来自不同 lens，不要把同一个观点改成多个标题
+  - 主角度必须说明至少 3 个差异轴，例如用户任务、证据类型、叙事装置、视觉语法或互动触发
   - 如果角度没有赢面，要明确建议退回上游重选
   - 对 Bilibili 中视频，必须把前 30 秒怎么留人、第一层证明怎么前置、结尾怎样桥接到下一条写清楚
 
   ## 工作原则
   - 角度优先于空泛观点，钩子优先于摘要
+  - 栏目统一不等于创意重复；如果这期像上一期的换词版，退回选题或重新设计角度
   - 使用用户语言，交付物简洁但可执行

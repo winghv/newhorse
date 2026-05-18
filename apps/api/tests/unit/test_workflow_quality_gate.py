@@ -47,6 +47,17 @@ def make_quality_gate_package(project_root: Path, *, visual_status: str = "pass"
     write_json(project_root / "content" / "postproduction" / "emphasis-fx-plan.json", {"scene_fx": []})
     write_json(project_root / "review" / "scene-assembly-report.json", {"status": "pass"})
     write_json(project_root / "assets" / "generation-budget.json", {"approved_generation_slots": []})
+    write_json(
+        project_root / "assets" / "visual-production-gate.json",
+        {
+            "status": "pass",
+            "checks": {
+                "primary_visuals_not_all_cards": {"status": "pass"},
+                "production_footage_present": {"status": "pass"},
+                "approved_generation_delivered": {"status": "pass"},
+            },
+        },
+    )
     (project_root / "content" / "postproduction" / "voice.mp3").write_bytes(b"voice")
     (project_root / "content" / "postproduction" / "subtitles.srt").write_text(
         "1\n00:00:00,000 --> 00:00:01,000\nhello\n",
@@ -134,3 +145,33 @@ def test_build_workflow_quality_gate_marks_revise_when_subtitle_is_stale(tmp_pat
     assert "subtitle_quality_status" in gate["revise_dimensions"]
     assert subtitle_dimension["status"] == "revise"
     assert "subtitle_needs_regeneration_from_latest_voiceover" in subtitle_dimension["reasons"]
+
+
+def test_build_workflow_quality_gate_blocks_midlong_video_without_visual_production_gate_pass(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "media-ops-orchestration"
+        / "scripts"
+        / "build_workflow_quality_gate.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-03-31-quality-visual-production"
+    make_quality_gate_package(project_root)
+    write_json(
+        project_root / "assets" / "visual-production-gate.json",
+        {
+            "status": "revise",
+            "reasons": ["primary_visuals_are_all_text_cards", "production_footage_missing"],
+        },
+    )
+
+    run_command([sys.executable, str(script_path), "--project-root", str(project_root)], repo_root)
+
+    gate = json.loads((project_root / "review" / "workflow-quality-gate.json").read_text(encoding="utf-8"))
+    dimension = gate["dimensions"]["visual_production_status"]
+    assert gate["overall_status"] == "revise"
+    assert "visual_production_status" in gate["revise_dimensions"]
+    assert dimension["status"] == "revise"
+    assert "primary_visuals_are_all_text_cards" in dimension["reasons"]

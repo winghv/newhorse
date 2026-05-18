@@ -2,7 +2,9 @@
 
 这套内置团队已经从基础的 `研究 -> 选题 -> 制作 -> 审核 -> 发布`，升级为更强调作品竞争力的闭环：
 
-`研究 -> 对标拆解 -> 选题 -> 角度设计 -> 剧本打磨 -> 制作 -> 竞争审校 -> 合规门禁 -> 发布 -> 复盘`
+`研究 -> 对标拆解 -> 选题 -> 创意差异 brief -> 角度设计 -> 剧本打磨 -> 制作 -> 竞争审校 -> 合规门禁 -> 发布 -> 复盘`
+
+新增的 `创意差异 brief` 不是为了破坏流程稳定性，而是防止作品被流程模板锁死。流程可以相近，栏目可以稳定，但每条内容必须说明它相对最近作品的新思考路径、证据变化、叙事装置和视觉语言变化。
 
 整条流水线仍由一个总控 Butler 串起来，但现在不仅能“发出去”，还会追求“为什么这条内容有赢面”。
 
@@ -51,6 +53,7 @@
 - `reference-video-ingest`
 - `script-polishing`
 - `topic-selection`
+- `creative-divergence`
 - `angle-design`
 - `content-production`
 - `xiaohongshu-account-ops`
@@ -88,10 +91,12 @@
 4.1. 如果已经拿到可直接拆的参考视频 URL / BV 号，先运行 `python3 extensions/skills/reference-video-ingest/scripts/ingest_reference_video.py --project-root data/media-ops/<content-id> --source-url <video-url>`，把 transcript artifacts 沉淀到 `research/`
 4.2. 如果参考视频库已经积累到可用规模，再运行 `python3 extensions/skills/script-polishing/scripts/build_reference_script_patterns.py --project-root data/media-ops/<content-id>`，把优秀稿件的写稿打法沉淀成 `benchmarks/reference-script-patterns.json`
 4.3. 如果要重新做 B 站 backlog，不要直接口头列题。先写 `planning/topic-pool.json` 或共享 strategy file，再运行 `python3 extensions/skills/topic-selection/scripts/build_topic_backlog.py --project-root data/media-ops/<content-id> --strategy-file data/media-ops/_strategy/<strategy>.json`，把“候选题 -> 参考信号 -> 打分 -> 去重 -> selected topic”落成 `planning/topic-selection.json`
+4.4. 每条内容进入 angle 前必须补 `planning/creative-divergence-brief.json`，明确这期和最近 `3-5` 条内容在哪些维度不同，以及哪些开头、结构、案例或视觉套路本期禁止继续复用
+4.5. B 站中视频进入剧本定稿前，先运行 `python3 extensions/skills/content-research/scripts/build_bilibili_material_search_brief.py --project-root data/media-ops/<content-id>`，生成 `research/material-search-brief.json`，把同题候选视频、评论区问题、案例和可视化素材线索交给 `script-polishing`
 5. 如果你已经配置了上传环境与账号状态，发布阶段会优先调用现有 upload skills
 6. 如果中长视频需要自动找外部素材并把获批片段沉淀到生产链，运行 `/media-source-footage data/media-ops/<content-id> --download-approved`
 7. 如果项目里已有图卡、封面或其它 SVG 资产，先运行 `python3 extensions/skills/video-asset-planning/scripts/export_svg_assets.py --project-root data/media-ops/<content-id> --include-root-assets`，统一导出 PNG，而不是人工逐张处理
-8. 对解释型中长视频，在进入配音或装配前，先补齐 `planning/cognitive-punch-gate.json`、`sources/chapter-coverage-report.json` 和 `review/assembly-qa-report.json`
+8. 对解释型中长视频，在进入配音或装配前，先补齐 `planning/cognitive-punch-gate.json`、`sources/chapter-coverage-report.json`、`assets/visual-production-gate.json` 和 `review/assembly-qa-report.json`
 9. 同时运行 `python3 extensions/skills/media-ops-orchestration/scripts/build_video_automation_plan.py --project-root data/media-ops/<content-id>`，确认 B-roll、图卡导出、proof pack 和 render workflow 的自动入口都已接通
 10. 如果视频内容包已经具备旁白 handoff，也可以直接运行项目命令 `/media-render data/media-ops/<content-id>` 自动生成字幕草案、必要时自动拼出基础时间线、写出 `render-plan.json`、`assembly-qa-report.json` 并执行后期装配
 11. 如果是 Butler / specialist 在 `data/projects/<project-id>` 里执行，默认走 `video-production-director` 内置的 runner 命令，而不是手动拼 ffmpeg
@@ -123,6 +128,7 @@
    - `angles/attention-structure-template.json`
    - `angles/follow-conversion-hooks.json`
 2.0. 在进入 angle 之前，优先让 `topic-selection` 先把候选池写成 `planning/topic-pool.json`，并把最近已做题目、参考视频标题信号和 `proof_handle / visual_handle` 一起纳入去重逻辑，避免连续两条只是在复述同一个母题
+2.0.1. 在进入 angle 之前，还要补 `planning/creative-divergence-brief.json`。同一个系列可以保持相近栏目结构，但必须至少在用户任务、证据类型、叙事装置、视觉语法或互动触发中改变 `3` 个维度
 2.1. 如果 benchmark 阶段已经拿到参考视频 URL / BV 号，优先补 `research/reference-video-metadata.json`、`research/reference-transcript.srt` 和 `research/reference-transcript.md`，再做模式拆解
 2.2. 如果参考视频库已经积累到可用规模，再让 `script-doctor` 或 `script-polishing` 补：
    - `benchmarks/reference-script-patterns.json`
@@ -148,6 +154,7 @@
    - `kuaishou-short-video-packaging`
    - `bilibili-midform-video-packaging`
 10. 竞争审校阶段如果是 Bilibili 中视频，再补 `review/opening-scorecard.json`，专门检查前 `30` 秒 promise -> proof 闭环和结尾桥接
+10.1. 竞争审校还要检查模板疲劳。如果作品只是上一期的换词版，输出 `review/template-fatigue-report.json`，并且不能判 `pass`
 11. `video-postproduction-assembly` 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果没有 rough cut 且策略是 `rebuild_timeline`，则自动用图卡、proof pack 和已获批 B-roll 拼出基础时间线，再写出 `audio-cue-sheet.json`、render manifest、assembly qa report、subtitle quality report 与验证记录
 11.1. 如果 `visual-diversity-report.json` 没过线，不要继续靠转场或配乐掩盖素材重复，先回到素材计划层补章级资产
 11.2. 对旁白驱动中视频，进入 render 前默认还要补 `scene-manifest.json`、`transition-plan.json` 和 `emphasis-fx-plan.json`；render 后要补 `scene-assembly-report.json`

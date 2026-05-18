@@ -156,6 +156,18 @@ def make_visual_asset_package(project_root: Path) -> None:
             "decision": "pass",
         },
     )
+    write_json(
+        project_root / "assets" / "visual-production-gate.json",
+        {
+            "status": "pass",
+            "reasons": [],
+            "summary": {
+                "primary_text_card_ratio": 0.0,
+                "production_footage_count": 1,
+                "generated_visual_count": 1,
+            },
+        },
+    )
 
 
 def test_build_scene_asset_plan_creates_visual_evidence_and_budget_artifacts(tmp_path: Path) -> None:
@@ -473,3 +485,135 @@ def test_build_video_automation_plan_splits_voiceover_and_subtitle_chain(tmp_pat
     assert tasks["subtitle-from-voiceover"]["status"] == "ready_to_run"
     assert payload["summary"]["voiceover_audio_exists"] is True
     assert payload["summary"]["subtitle_up_to_date"] is False
+
+
+def test_visual_production_gate_flags_all_card_scene_plan(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    gate_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-asset-planning"
+        / "scripts"
+        / "build_visual_production_gate.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-08-all-card-gate"
+    make_visual_asset_package(project_root)
+    write_json(
+        project_root / "assets" / "scene-asset-plan.json",
+        {
+            "chapters": [
+                {
+                    "chapter_id": "ch1",
+                    "proof_asset": {"path": "assets/graphics/card-01-hook.png", "type": "graphics-card"},
+                    "supporting_b_roll": [],
+                    "fallback_graphics": ["assets/graphics/card-01-hook.png"],
+                    "approved_generation_slots": [],
+                },
+                {
+                    "chapter_id": "ch2",
+                    "proof_asset": {"path": "assets/graphics/card-02-offer.png", "type": "graphics-card"},
+                    "supporting_b_roll": [],
+                    "fallback_graphics": ["assets/graphics/card-02-offer.png"],
+                    "approved_generation_slots": [],
+                },
+            ]
+        },
+    )
+
+    run_command([sys.executable, str(gate_script), "--project-root", str(project_root)], repo_root)
+
+    gate = json.loads((project_root / "assets" / "visual-production-gate.json").read_text(encoding="utf-8"))
+    assert gate["status"] == "revise"
+    assert "primary_visuals_are_all_text_cards" in gate["reasons"]
+    assert "production_footage_missing" in gate["reasons"]
+    assert gate["summary"]["primary_text_card_ratio"] == 1.0
+
+
+def test_visual_production_gate_passes_when_real_footage_and_generated_keyart_exist(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    gate_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "video-asset-planning"
+        / "scripts"
+        / "build_visual_production_gate.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-08-visual-gate-pass"
+    make_visual_asset_package(project_root)
+    generated_path = project_root / "assets" / "generated" / "ch1-keyart.png"
+    generated_path.parent.mkdir(parents=True, exist_ok=True)
+    generated_path.write_bytes(b"png")
+    footage_path = project_root / "assets" / "reused" / "stock-1.mp4"
+    footage_path.parent.mkdir(parents=True, exist_ok=True)
+    footage_path.write_bytes(b"mp4")
+    write_json(
+        project_root / "assets" / "scene-asset-plan.json",
+        {
+            "chapters": [
+                {
+                    "chapter_id": "ch1",
+                    "proof_asset": {"path": "assets/generated/ch1-keyart.png", "type": "generated-keyart"},
+                    "supporting_b_roll": [
+                        {
+                            "clip_id": "stock-1",
+                            "asset_path": "assets/reused/stock-1.mp4",
+                            "source_track": "production",
+                        }
+                    ],
+                    "fallback_graphics": ["assets/graphics/card-01-hook.png"],
+                    "approved_generation_slots": [],
+                }
+            ]
+        },
+    )
+
+    run_command([sys.executable, str(gate_script), "--project-root", str(project_root)], repo_root)
+
+    gate = json.loads((project_root / "assets" / "visual-production-gate.json").read_text(encoding="utf-8"))
+    assert gate["status"] == "pass"
+    assert gate["summary"]["production_footage_count"] == 1
+    assert gate["summary"]["generated_visual_count"] == 1
+
+
+def test_build_video_automation_plan_blocks_tts_and_render_when_visual_gate_revise(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    automation_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "media-ops-orchestration"
+        / "scripts"
+        / "build_video_automation_plan.py"
+    )
+    project_root = tmp_path / "media-ops" / "2026-04-08-automation-blocked-by-visuals"
+    make_visual_asset_package(project_root)
+    write_json(
+        project_root / "assets" / "visual-production-gate.json",
+        {
+            "status": "revise",
+            "reasons": ["primary_visuals_are_all_text_cards"],
+        },
+    )
+    write_json(
+        project_root / "content" / "postproduction" / "voiceover-profile.json",
+        {
+            "render_targets": {
+                "segments_file": "content/postproduction/voiceover-segments.json",
+                "voiceover_audio": "content/postproduction/voiceover.mp3",
+                "subtitle_draft": "content/postproduction/subtitles.srt",
+            }
+        },
+    )
+    write_json(project_root / "content" / "postproduction" / "voiceover-segments.json", [{"text": "hello"}])
+
+    run_command([sys.executable, str(automation_script), "--project-root", str(project_root)], repo_root)
+
+    payload = json.loads((project_root / "review" / "video-automation-plan.json").read_text(encoding="utf-8"))
+    tasks = {task["task_id"]: task for task in payload["tasks"]}
+    assert tasks["visual-production-gate"]["status"] == "ready_to_run"
+    assert tasks["voiceover-generate"]["status"] == "blocked"
+    assert tasks["subtitle-from-voiceover"]["status"] == "blocked"
+    assert tasks["render"]["status"] == "blocked"
+    assert payload["summary"]["visual_production_status"] == "revise"

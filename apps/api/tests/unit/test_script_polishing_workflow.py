@@ -233,6 +233,63 @@ def test_build_reference_script_patterns_and_polish_packet(tmp_path: Path) -> No
     assert "operating_mode=supervisor-led" in polish["delegate_brief_template"]
 
 
+def test_build_material_search_brief_and_polish_packet_requires_it(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    material_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "content-research"
+        / "scripts"
+        / "build_bilibili_material_search_brief.py"
+    )
+    polish_script = (
+        repo_root
+        / "extensions"
+        / "skills"
+        / "script-polishing"
+        / "scripts"
+        / "build_script_polish_packet.py"
+    )
+
+    project_root = tmp_path / "media-ops" / "2026-04-03-material-search"
+    make_script_project(project_root)
+
+    run_command([sys.executable, str(polish_script), "--project-root", str(project_root)], repo_root)
+    polish_without_research = json.loads((project_root / "content" / "script-polish-packet.json").read_text(encoding="utf-8"))
+    assert polish_without_research["material_research_contract"]["status"] == "revise"
+    assert "research/material-search-brief.json" in polish_without_research["material_research_contract"]["required_artifacts"]
+
+    write_json(
+        project_root / "research" / "bilibili-material-seeds.json",
+        {
+            "candidates": [
+                {
+                    "title": "算法越懂你，为什么你越难独立判断",
+                    "video_id": "BV1Material",
+                    "url": "https://www.bilibili.com/video/BV1Material",
+                    "uploader": "认知样本库",
+                    "stats": {"view": 180000, "danmaku": 1200},
+                    "why_collect": "同题材且有可视化案例和评论区问题。",
+                }
+            ]
+        },
+    )
+    run_command([sys.executable, str(material_script), "--project-root", str(project_root)], repo_root)
+    run_command([sys.executable, str(polish_script), "--project-root", str(project_root)], repo_root)
+
+    material_brief = json.loads((project_root / "research" / "material-search-brief.json").read_text(encoding="utf-8"))
+    polish = json.loads((project_root / "content" / "script-polish-packet.json").read_text(encoding="utf-8"))
+    assert material_brief["platform"] == "bilibili"
+    assert material_brief["status"] == "pass"
+    assert material_brief["queries"]
+    assert material_brief["candidate_video_seeds"]
+    assert material_brief["anti_template_findings"]
+    assert polish["material_research_contract"]["status"] == "pass"
+    assert polish["material_research_contract"]["source_path"] == "research/material-search-brief.json"
+    assert polish["material_research_contract"]["visual_material_handles"]
+
+
 def test_build_script_polish_packet_expands_for_13_minute_target(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[4]
     patterns_script = (

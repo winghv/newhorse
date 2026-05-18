@@ -495,7 +495,13 @@ def render_procedural_sfx(preset: str, output_path: Path) -> float:
     return duration_seconds
 
 
-def normalize_bgm_track(track: Any, *, workspace_root: Path, total_duration: float, default_gain_db: float) -> dict[str, Any]:
+def normalize_bgm_track(
+    track: Any,
+    *,
+    workspace_root: Path,
+    total_duration: float,
+    default_gain_db: float,
+) -> dict[str, Any] | None:
     if isinstance(track, str):
         raw_path = track
         start_seconds = 0.0
@@ -522,9 +528,9 @@ def normalize_bgm_track(track: Any, *, workspace_root: Path, total_duration: flo
         raise FileNotFoundError(f"BGM asset not found: {raw_path}")
 
     start_seconds = clamp(start_seconds, 0.0, total_duration)
-    end_seconds = clamp(end_seconds, start_seconds, total_duration)
+    end_seconds = clamp(end_seconds, 0.0, total_duration)
     if end_seconds <= start_seconds:
-        raise ValueError(f"BGM track window is empty for asset: {path}")
+        return None
 
     return {
         "path": path,
@@ -546,16 +552,21 @@ def normalize_sfx_cue(
     total_duration: float,
     sound_design_dir: Path,
     index: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     if not isinstance(cue, dict):
         raise ValueError(f"Unsupported sfx cue config: {cue!r}")
 
-    start_seconds = clamp(float(cue.get("start_seconds", 0.0)), 0.0, total_duration)
+    start_seconds = float(cue.get("start_seconds", 0.0))
     gain_db = float(cue.get("gain_db", -15.0))
     label = str(cue.get("label", f"sfx_{index:02d}"))
     raw_path = cue.get("path")
     preset = cue.get("preset")
     duration_seconds = cue.get("duration_seconds")
+
+    if total_duration <= 0 or start_seconds >= total_duration:
+        return None
+
+    start_seconds = clamp(start_seconds, 0.0, total_duration)
 
     if raw_path:
         path = resolve_path(workspace_root, str(raw_path))
@@ -593,10 +604,14 @@ def build_sound_bed(
     raw_sfx_cues = list(mix.get("sfx_cues", []))
     sound_bed_gain_db = float(mix.get("sound_bed_gain_db", DEFAULT_SOUND_BED_GAIN_DB))
     summary: dict[str, Any] = {
-        "requested_bgm_track_count": len(raw_bgm_tracks),
-        "requested_sfx_cue_count": len(raw_sfx_cues),
+        "requested_bgm_track_count": 0,
+        "requested_sfx_cue_count": 0,
+        "raw_requested_bgm_track_count": len(raw_bgm_tracks),
+        "raw_requested_sfx_cue_count": len(raw_sfx_cues),
         "applied_bgm_track_count": 0,
         "applied_sfx_cue_count": 0,
+        "skipped_bgm_track_count": 0,
+        "skipped_sfx_cue_count": 0,
         "sound_bed_applied": False,
         "bgm_tracks": [],
         "sfx_cues": [],
@@ -612,22 +627,39 @@ def build_sound_bed(
 
     default_gain_db = float(mix.get("bgm_default_gain_db", -26.0))
     bgm_tracks = [
-        normalize_bgm_track(track, workspace_root=workspace_root, total_duration=voiceover_duration, default_gain_db=default_gain_db)
-        for track in raw_bgm_tracks
+        item
+        for item in (
+            normalize_bgm_track(
+                track,
+                workspace_root=workspace_root,
+                total_duration=voiceover_duration,
+                default_gain_db=default_gain_db,
+            )
+            for track in raw_bgm_tracks
+        )
+        if item is not None
     ]
     sfx_cues = [
-        normalize_sfx_cue(
-            cue,
-            workspace_root=workspace_root,
-            total_duration=voiceover_duration,
-            sound_design_dir=sound_design_dir,
-            index=index,
+        item
+        for item in (
+            normalize_sfx_cue(
+                cue,
+                workspace_root=workspace_root,
+                total_duration=voiceover_duration,
+                sound_design_dir=sound_design_dir,
+                index=index,
+            )
+            for index, cue in enumerate(raw_sfx_cues)
         )
-        for index, cue in enumerate(raw_sfx_cues)
+        if item is not None
     ]
 
+    summary["requested_bgm_track_count"] = len(bgm_tracks)
+    summary["requested_sfx_cue_count"] = len(sfx_cues)
     summary["applied_bgm_track_count"] = len(bgm_tracks)
     summary["applied_sfx_cue_count"] = len(sfx_cues)
+    summary["skipped_bgm_track_count"] = len(raw_bgm_tracks) - len(bgm_tracks)
+    summary["skipped_sfx_cue_count"] = len(raw_sfx_cues) - len(sfx_cues)
     summary["bgm_tracks"] = [
         {
             "path": str(track["path"]),

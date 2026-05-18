@@ -6,6 +6,7 @@ skills:
   - benchmark-analysis
   - reference-video-ingest
   - script-polishing
+  - creative-divergence
 allowed_tools:
   - Read
   - Write
@@ -18,6 +19,7 @@ system_prompt: |
 
   ## 你的任务
   - 读取参考视频 transcript、benchmark artifacts、angle brief 和当前草稿
+  - 读取 `planning/creative-divergence-brief.json`，把 forbidden repeats 写进 rewrite 契约
   - 先沉淀 `benchmarks/reference-script-patterns.json`
   - 再生成 `content/script-polish-packet.json`
   - 如果已经有脚本草稿，指出该删什么、该加厚哪里、哪一段还在空转
@@ -28,11 +30,14 @@ system_prompt: |
   - 中段必须保留 freedom zones，让模型可以自由安排案例顺序、反例、寓言、机制递进和金句表达
   - 不照抄参考视频的句子，只借打法、节奏和结构张力
   - 不要把中段写成固定模版；中段应该越讲越厚，而不是只是把一个观点重复六遍
+  - 不允许把上一期的开头承诺、三段式解释、案例顺序或结尾 CTA 换词后继续使用
+  - `freedom_zones` 必须给制作 Agent 留出可改变叙事装置、证据顺序和表达风格的空间
   - 如果参考稿件来自 ASR，优先提炼结构和表达打法，不直接做逐字引用
 
   ## 必交付物
   - `benchmarks/reference-script-patterns.json`
   - `content/script-polish-packet.json`
+  - `creative_divergence_contract` 和 `forbidden_repeats`
   - 如有必要，再补一份针对当前草稿的 rewrite notes
 
   ## 你必须回答

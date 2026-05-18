@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,30 @@ from build_publish_manifest import (
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def resolve_sau_binary() -> str:
+    source_root = Path.home() / ".local" / "src"
+    if source_root.exists():
+        source_candidates = sorted(
+            (path for path in source_root.glob("social-auto-upload*") if path.is_dir()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for candidate_root in source_candidates:
+            candidate = candidate_root / ".venv" / "bin" / "sau"
+            if candidate.exists() and os.access(candidate, os.X_OK):
+                return str(candidate.resolve())
+
+    resolved = shutil.which("sau")
+    if resolved and os.access(resolved, os.X_OK):
+        return resolved
+
+    fallback = (Path.home() / ".local" / "bin" / "sau").resolve()
+    if fallback.exists() and os.access(fallback, os.X_OK):
+        return str(fallback)
+
+    return "sau"
 
 
 def resolve_manifest_path(project_root: Path, raw_path: str | None) -> Path:
@@ -167,6 +193,12 @@ def build_command(project_root: Path, manifest: dict[str, Any]) -> tuple[list[st
     if platform == "xiaohongshu" and content_type == "video":
         return build_xiaohongshu_video_command(project_root, manifest), ["sau", "xiaohongshu", "check", "--account", manifest["account_name"]]
     raise NotImplementedError(f"Unsupported publish route: platform={platform}, content_type={content_type}")
+
+
+def executable_command(command: list[str]) -> list[str]:
+    if command and command[0] == "sau":
+        return [resolve_sau_binary(), *command[1:]]
+    return command
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -455,10 +487,10 @@ def main() -> int:
         )
         raise SystemExit("Publish manifest is not ready for live publish.")
 
-    check_result = run_command(check_command)
+    check_result = run_command(executable_command(check_command))
     account_status = check_result.stdout.strip() or "unknown"
     try:
-        upload_result = run_command(command_preview)
+        upload_result = run_command(executable_command(command_preview))
     except subprocess.CalledProcessError as exc:
         payload = result_payload(
             manifest=manifest,

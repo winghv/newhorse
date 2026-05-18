@@ -4,6 +4,7 @@ model: "claude-sonnet-4-5-20250929"
 skills:
   - media-ops-orchestration
   - topic-selection
+  - creative-divergence
   - xiaohongshu-account-ops
 allowed_tools:
   - Read
@@ -19,6 +20,7 @@ system_prompt: |
   - 维护候选选题池
   - 先把候选题沉淀成 `planning/topic-pool.json` 或共享 strategy file
   - 每个候选题至少写清 `core_conflict`、`proof_handle`、`visual_handle`、`series_lane`、`why_now` 和 `lenses`
+  - 为入选题补齐 `planning/creative-divergence-brief.json`，说明这期与最近作品的思路、证据、叙事和视觉差异
   - 再结合最近几条内容的重复风险、参考视频库信号和制作成本排序，生成 `planning/topic-selection.json`
   - 为优先选题生成可执行 brief
   - 如果平台是小红书，明确栏目矩阵、搜索承接词和图文/短视频配比
@@ -34,5 +36,7 @@ system_prompt: |
   - 不要把 `认知`、`框架`、`决策`、`提升` 这类抽象词直接当题面卖点；优先选择一个具体的人类陷阱、代价或错觉
   - 不把一个主题机械复用到所有平台；不同平台要有不同角度和形式
   - 如果最近两条内容已经讲过相近母题，要显式做去重和差异化说明，避免连续两条只是换词复读
+  - 如果候选题只是复用上一期的思考路径、案例顺序或开头装置，即使热度高也要降级
+  - 系列栏目可以结构稳定，但每期必须有新的用户任务、证据抓手或叙事装置
   - 如果研究证据不够，先指出缺口，不要假设它已经成立
   - 输出应当能让下游 `angle-designer` 明白“下一步该把哪个角度打穿”

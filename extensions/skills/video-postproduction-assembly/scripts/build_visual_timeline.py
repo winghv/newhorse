@@ -56,6 +56,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=int, default=60, help="Output fps.")
     parser.add_argument("--crf", type=int, default=20, help="Output CRF.")
     parser.add_argument("--preset", default="medium", help="Output encoding preset.")
+    parser.add_argument(
+        "--asset-mode",
+        choices=["default", "ai-images-only"],
+        default="default",
+        help="Visual asset source policy. ai-images-only excludes external footage, generated videos, graphics, and text cards.",
+    )
+    parser.add_argument(
+        "--disable-typewriter-overlays",
+        action="store_true",
+        help="Disable large typewriter quote overlays on the base cut.",
+    )
     args = parser.parse_args()
     if not args.project_root and not args.content_id:
         parser.error("one of --project-root or --content-id is required")
@@ -274,6 +285,7 @@ def parse_srt(path: Path | None) -> list[dict[str, Any]]:
                 "end": end,
                 "duration": max(end - start, 0.0),
                 "text": " ".join(lines[2:]),
+                "lines": lines[2:],
             }
         )
     return cues
@@ -336,13 +348,61 @@ def normalize_text_for_match(value: str | None) -> str:
     return "".join(re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", raw)).lower()
 
 
+def contains_cjk(value: str | None) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", str(value or "")))
+
+
+def cue_match_text(cue: dict[str, Any], effect_text: str | None) -> str:
+    lines = cue.get("lines") if isinstance(cue.get("lines"), list) else []
+    normalized_lines = [str(line).strip() for line in lines if str(line).strip()]
+    if not normalized_lines:
+        return str(cue.get("text") or "")
+    if contains_cjk(effect_text):
+        cjk_lines = [line for line in normalized_lines if contains_cjk(line)]
+        if cjk_lines:
+            return " ".join(cjk_lines)
+    return " ".join(normalized_lines)
+
+
+def subtitle_alignment_candidates(
+    subtitle_cues: list[dict[str, Any]],
+    *,
+    slot_window_start: float,
+    slot_window_end: float,
+) -> list[dict[str, Any]]:
+    base_candidates = [
+        cue
+        for cue in subtitle_cues
+        if float(cue.get("end", 0.0)) >= slot_window_start - 0.35
+        and float(cue.get("start", 0.0)) <= slot_window_end + 0.35
+    ] or list(subtitle_cues)
+
+    merged_candidates: list[dict[str, Any]] = list(base_candidates)
+    for index in range(len(base_candidates) - 1):
+        first = base_candidates[index]
+        second = base_candidates[index + 1]
+        merged_candidates.append(
+            {
+                "start": float(first.get("start", 0.0)),
+                "end": float(second.get("end", 0.0)),
+                "duration": max(float(second.get("end", 0.0)) - float(first.get("start", 0.0)), 0.0),
+                "text": f"{first.get('text', '')} {second.get('text', '')}".strip(),
+                "lines": [
+                    *([line for line in first.get("lines", []) if str(line).strip()] if isinstance(first.get("lines"), list) else []),
+                    *([line for line in second.get("lines", []) if str(line).strip()] if isinstance(second.get("lines"), list) else []),
+                ],
+            }
+        )
+    return merged_candidates
+
+
 def text_match_score(left: str | None, right: str | None) -> float:
     left_normalized = normalize_text_for_match(left)
     right_normalized = normalize_text_for_match(right)
     if not left_normalized or not right_normalized:
         return 0.0
     if left_normalized in right_normalized or right_normalized in left_normalized:
-        return 1.0
+        return min(len(left_normalized), len(right_normalized)) / max(len(left_normalized), len(right_normalized))
 
     def bigrams(value: str) -> set[str]:
         if len(value) < 2:
@@ -389,6 +449,11 @@ def parse_card_order(path: Path) -> int:
     return int(match.group(1)) if match else 999
 
 
+def is_plain_card_path(raw_path: str | Path | None) -> bool:
+    value = str(raw_path or "")
+    return Path(value).name.startswith("card-") or "/assets/graphics/card-" in value or "assets/graphics/card-" in value
+
+
 def load_generation_video_assets(project_root: Path) -> list[dict[str, Any]]:
     generation_ledger = load_json(project_root / "assets" / "generation-ledger.json")
     entries = generation_ledger.get("entries") if isinstance(generation_ledger.get("entries"), list) else []
@@ -430,6 +495,7 @@ def load_generation_video_assets(project_root: Path) -> list[dict[str, Any]]:
 
 def collect_graphic_assets(project_root: Path) -> list[dict[str, Any]]:
     assets: list[dict[str, Any]] = []
+    allow_plain_cards = pure_text_cards_allowed(project_root)
     graphics_brief = load_json(project_root / "assets" / "graphics" / "graphics-asset-brief.json")
     cards = graphics_brief.get("cards") if isinstance(graphics_brief.get("cards"), list) else []
 
@@ -438,6 +504,8 @@ def collect_graphic_assets(project_root: Path) -> list[dict[str, Any]]:
             continue
         output_path = resolve_candidate(project_root, card.get("output_path"))
         if output_path is None or not output_path.exists() or output_path.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        if not allow_plain_cards and is_plain_card_path(output_path):
             continue
         assets.append(
             {
@@ -453,7 +521,7 @@ def collect_graphic_assets(project_root: Path) -> list[dict[str, Any]]:
     if assets:
         return sorted(assets, key=lambda item: (item.get("order", 999), str(item["path"])))
 
-    if not pure_text_cards_allowed(project_root):
+    if not allow_plain_cards:
         return []
 
     graphics_dir = project_root / "assets" / "graphics"
@@ -496,9 +564,13 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
     raw_paths: list[tuple[str, str | None, int | None]] = []
     for raw_path in proof_pack.get("primary_render_assets", []):
         if isinstance(raw_path, str):
+            if not pure_text_cards_allowed(project_root) and is_plain_card_path(raw_path):
+                continue
             raw_paths.append((raw_path, "ch3", None))
     for item in proof_pack.get("proof_items", []):
         if isinstance(item, dict) and isinstance(item.get("graphic_binding"), str):
+            if not pure_text_cards_allowed(project_root) and is_plain_card_path(item["graphic_binding"]):
+                continue
             raw_paths.append((item["graphic_binding"], item.get("chapter_id"), None))
     chapters = scene_asset_plan.get("chapters") if isinstance(scene_asset_plan.get("chapters"), list) else []
     for chapter in chapters:
@@ -516,6 +588,8 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
         fallback_graphics = chapter.get("fallback_graphics") if isinstance(chapter.get("fallback_graphics"), list) else []
         for fallback_item in fallback_graphics:
             if isinstance(fallback_item, str) and fallback_item.strip():
+                if not pure_text_cards_allowed(project_root) and is_plain_card_path(fallback_item):
+                    continue
                 raw_paths.append((fallback_item, chapter_id, max_repeat_uses))
 
     seen: set[Path] = set()
@@ -546,6 +620,44 @@ def collect_proof_assets(project_root: Path) -> list[dict[str, Any]]:
     return prioritized
 
 
+def collect_ai_image_assets(project_root: Path) -> list[dict[str, Any]]:
+    """Collect generated bitmap keyframes for an image-only visual pass."""
+    search_roots = [
+        project_root / "content" / "postproduction" / "minimax-output" / "visual-prebake" / "images",
+        project_root / "assets" / "generated",
+        project_root / "assets" / "ai-keyframes",
+        project_root / "assets" / "generated-keyframes",
+    ]
+    assets: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in IMAGE_SUFFIXES:
+                continue
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            chapter_id = infer_chapter_from_text(path.as_posix()) or infer_chapter_from_text(path.stem)
+            if chapter_id is None:
+                match = re.search(r"(ch\d+)", path.as_posix(), flags=re.IGNORECASE)
+                chapter_id = match.group(1).lower() if match else None
+            assets.append(
+                {
+                    "type": "image",
+                    "path": resolved,
+                    "chapter_id": chapter_id,
+                    "order": parse_card_order(path),
+                    "role": "keyart",
+                    "source": "ai-images-only",
+                    "max_repeat_uses": None,
+                }
+            )
+    return sorted(assets, key=lambda item: (item.get("chapter_id") or "zz", item["path"].name))
+
+
 def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
     source_manifest = load_json(project_root / "sources" / "source-manifest.json")
     source_shortlist = load_json(project_root / "sources" / "source-shortlist.json")
@@ -555,6 +667,7 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
     manifest_items = source_manifest.get("source_manifest") if isinstance(source_manifest.get("source_manifest"), list) else []
     assets: list[dict[str, Any]] = []
     seen_paths: set[Path] = set()
+    asset_index_by_path: dict[Path, int] = {}
     metadata_by_clip_id: dict[str, dict[str, Any]] = {}
 
     shortlist_items: list[dict[str, Any]] = []
@@ -585,7 +698,26 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
         candidate = resolve_candidate(project_root, payload.get("path"))
         if candidate is None or not candidate.exists() or candidate.suffix.lower() not in VIDEO_SUFFIXES:
             return
+        source_order = payload.get("source_order")
         if candidate in seen_paths:
+            existing_index = asset_index_by_path.get(candidate)
+            if existing_index is None:
+                return
+            existing = assets[existing_index]
+            if payload.get("source") == "scene-asset-plan":
+                if payload.get("chapter_id"):
+                    existing["chapter_id"] = payload.get("chapter_id")
+                if payload.get("source_track"):
+                    existing["source_track"] = payload.get("source_track")
+                if payload.get("generation_type"):
+                    existing["generation_type"] = payload.get("generation_type")
+                if payload.get("role"):
+                    existing["role"] = payload.get("role")
+                if payload.get("slot_id"):
+                    existing["slot_id"] = payload.get("slot_id")
+                if isinstance(source_order, int):
+                    existing["source_order"] = source_order
+                    existing["curation_source"] = "scene-asset-plan"
             return
         seen_paths.add(candidate)
         clip_id = payload.get("clip_id")
@@ -616,8 +748,11 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
                 "tags": [str(tag) for tag in metadata.get("tags", [])],
                 "query": str(metadata.get("query") or ""),
                 "preview_image_url": str(metadata.get("preview_image_url") or ""),
+                "source_order": source_order if isinstance(source_order, int) else 10_000,
+                "curation_source": payload.get("source"),
             }
         )
+        asset_index_by_path[candidate] = len(assets) - 1
 
     for item in manifest_items:
         if not isinstance(item, dict) or item.get("license_status") != "approved":
@@ -637,7 +772,7 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
             continue
         chapter_id = chapter.get("chapter_id")
         supporting_b_roll = chapter.get("supporting_b_roll") if isinstance(chapter.get("supporting_b_roll"), list) else []
-        for item in supporting_b_roll:
+        for source_order, item in enumerate(supporting_b_roll):
             if not isinstance(item, dict):
                 continue
             append_asset(
@@ -651,6 +786,7 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
                     "generation_type": item.get("generation_type"),
                     "role": "generated-hero" if str(item.get("source_track") or "") == "generated" else None,
                     "slot_id": item.get("slot_id"),
+                    "source_order": source_order,
                 }
             )
     ingested_assets = exploration_ingest.get("ingested_assets") if isinstance(exploration_ingest.get("ingested_assets"), list) else []
@@ -668,7 +804,14 @@ def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
         )
     for item in load_generation_video_assets(project_root):
         append_asset(item)
-    return sorted(assets, key=lambda item: (item.get("chapter_id") or "zz", item.get("clip_id") or item["path"].name))
+    return sorted(
+        assets,
+        key=lambda item: (
+            item.get("chapter_id") or "zz",
+            int(item.get("source_order", 10_000)),
+            item.get("clip_id") or item["path"].name,
+        ),
+    )
 
 
 def low_value_video_penalty(
@@ -1224,6 +1367,8 @@ def assign_assets(
             candidate_chapter = candidate.get("chapter_id")
             candidate_role = candidate.get("role")
             candidate_type = candidate["type"]
+            candidate_source_order = int(candidate.get("source_order", 10_000))
+            opening_chapter = chapter_order[0] if chapter_order else None
 
             if target_chapter == "opening":
                 if candidate_role == "cover":
@@ -1232,6 +1377,15 @@ def assign_assets(
                     score += 132
                 else:
                     score -= 80
+                if (
+                    index == 0
+                    and candidate_type == "image"
+                    and candidate_role in {"proof", "keyart"}
+                    and candidate_chapter == opening_chapter
+                ):
+                    score += 110
+                if candidate_chapter == opening_chapter and candidate_source_order < 10_000:
+                    score += max(0, 40 - candidate_source_order * 7)
             elif target_chapter and candidate_chapter == target_chapter:
                 score += 60
             elif target_chapter and candidate_chapter is None:
@@ -1305,6 +1459,12 @@ def assign_assets(
                 )
                 if candidate_role == "generated-hero":
                     score += 42
+                if (
+                    target_chapter in {"opening", opening_chapter}
+                    and candidate_chapter == opening_chapter
+                    and candidate_source_order < 10_000
+                ):
+                    score += max(0, 24 - candidate_source_order * 4)
                 if consecutive_images >= 2:
                     score += 22
                 if previous_type == "video":
@@ -1349,6 +1509,7 @@ def assign_assets(
                 score,
                 1.0 if candidate_type == "video" else 0.0,
                 1.0 if candidate_role == "proof" else 0.0,
+                -float(candidate_source_order),
                 -float(order_index),
             )
             if best_score is None or tie_breaker > best_score:
@@ -1384,6 +1545,8 @@ def assign_assets(
             max_offset = max(duration_seconds - slot["duration"], 0.0)
             if max_offset > 0:
                 clip_start = round(min((use_count * 1.618) % max_offset, max_offset), 3)
+                if index == 0 and max_offset >= 0.75:
+                    clip_start = round(min(max(clip_start, 1.0), max_offset), 3)
 
         motion = motion_profile(
             index,
@@ -1525,12 +1688,11 @@ def align_typewriter_effects_to_subtitles(
             continue
         slot_window_start = min(float(updated[index]["slot_start"]) for index in slot_indexes)
         slot_window_end = max(float(updated[index]["slot_end"]) for index in slot_indexes)
-        candidate_subtitles = [
-            cue
-            for cue in subtitle_cues
-            if float(cue.get("end", 0.0)) >= slot_window_start - 0.35
-            and float(cue.get("start", 0.0)) <= slot_window_end + 0.35
-        ] or list(subtitle_cues)
+        candidate_subtitles = subtitle_alignment_candidates(
+            subtitle_cues,
+            slot_window_start=slot_window_start,
+            slot_window_end=slot_window_end,
+        )
 
         for effect in typewriter_effects:
             target_role = str(effect.get("target_role") or "").strip()
@@ -1556,7 +1718,7 @@ def align_typewriter_effects_to_subtitles(
             matched_cue = None
             matched_score = 0.0
             for cue in candidate_subtitles:
-                score = effect_text_match_score(effect.get("text"), cue.get("text"))
+                score = effect_text_match_score(effect.get("text"), cue_match_text(cue, effect.get("text")))
                 if score > matched_score:
                     matched_score = score
                     matched_cue = cue
@@ -1564,11 +1726,10 @@ def align_typewriter_effects_to_subtitles(
             chosen_index = preferred_slot_candidates[0]
             start_offset_seconds = float(effect.get("start_offset_seconds") or 0.0)
             if matched_cue is not None and matched_score >= 0.3:
-                cue_window_start = float(matched_cue.get("start", 0.0))
                 cue_start = float(matched_cue.get("start", 0.0))
                 cue_start += phrase_alignment_offset(
                     effect.get("text"),
-                    matched_cue.get("text"),
+                    cue_match_text(matched_cue, effect.get("text")),
                     float(matched_cue.get("duration", 0.0)),
                 )
                 for index in preferred_slot_candidates:
@@ -1789,13 +1950,10 @@ def image_filter(
     typewriter_duration_seconds: float | None,
 ) -> str:
     fade_out_start = max(duration - 0.2, 0.0)
-    is_card_asset = Path(str(asset_path or "")).name.startswith("card-")
-    scale_width = int(round(width * 0.86)) if is_card_asset else width
-    scale_height = int(round(height * 0.86)) if is_card_asset else height
     if motion_preset == "static_hold" or (motion_zoom_ratio or 1.0) <= 1.001:
         filters = [
-            f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=decrease:flags=lanczos",
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos",
+            f"crop={width}:{height}",
             "setsar=1",
             f"fps={fps}",
             "format=yuv420p",
@@ -1842,12 +2000,12 @@ def image_filter(
         y_expr = f"{spare_y}/2"
 
     filters = [
-        f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=decrease:flags=lanczos",
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
-        "setsar=1",
+        f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos",
+        f"crop={width}:{height}",
         f"fps={motion_fps}",
         f"scale={overscan_width}:{overscan_height}:flags=lanczos",
         f"crop={width}:{height}:x={x_expr}:y={y_expr}",
+        "setsar=1",
         "tmix=frames=2:weights='1 1'",
         f"fps={fps}",
         "format=yuv420p",
@@ -2131,6 +2289,54 @@ def build_quality_report(sequence: list[dict[str, Any]], *, proof_assets_availab
     }
 
 
+def build_ai_images_only_quality_report(sequence: list[dict[str, Any]]) -> dict[str, Any]:
+    slot_count = len(sequence)
+    image_slots = [item for item in sequence if item["asset_type"] == "image"]
+    ai_image_slots = [
+        item
+        for item in image_slots
+        if "/visual-prebake/images/" in str(item.get("asset_path") or "")
+        or "/assets/generated" in str(item.get("asset_path") or "")
+        or "/assets/ai-keyframes" in str(item.get("asset_path") or "")
+        or "/assets/generated-keyframes" in str(item.get("asset_path") or "")
+    ]
+    typewriter_slots = [item for item in sequence if str(item.get("typewriter_text") or "").strip()]
+    average_slot_duration = (sum(float(item["slot_duration"]) for item in sequence) / slot_count) if slot_count else 0.0
+    max_image_slot_duration = max((float(item["slot_duration"]) for item in image_slots), default=0.0)
+    status = "pass"
+    warnings: list[str] = []
+    if slot_count and len(image_slots) != slot_count:
+        status = "revise"
+        warnings.append("non_image_slot_present")
+    if slot_count and len(ai_image_slots) != slot_count:
+        status = "revise"
+        warnings.append("non_ai_image_slot_present")
+    if typewriter_slots:
+        status = "revise"
+        warnings.append("typewriter_overlay_present")
+    if max_image_slot_duration > MAX_IMAGE_SLOT_DURATION_SECONDS:
+        warnings.append("image_hold_too_long")
+    if average_slot_duration > MAX_AVERAGE_SLOT_DURATION_SECONDS:
+        warnings.append("average_slot_too_long")
+    return {
+        "status": status,
+        "metrics": {
+            "slot_count": slot_count,
+            "image_slot_count": len(image_slots),
+            "ai_image_slot_count": len(ai_image_slots),
+            "typewriter_overlay_slot_count": len(typewriter_slots),
+            "average_slot_duration_seconds": round(average_slot_duration, 3),
+            "max_image_slot_duration_seconds": round(max_image_slot_duration, 3),
+        },
+        "thresholds": {
+            "max_image_slot_duration_seconds": MAX_IMAGE_SLOT_DURATION_SECONDS,
+            "max_average_slot_duration_seconds": MAX_AVERAGE_SLOT_DURATION_SECONDS,
+        },
+        "warnings": warnings,
+        "asset_mode": "ai-images-only",
+    }
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -2151,17 +2357,24 @@ def main() -> int:
     if output_video is None or plan_output is None:
         raise ValueError("output_video and plan_output must resolve to concrete filesystem paths")
 
-    cover_asset = collect_cover_asset(project_root)
-    proof_assets = collect_proof_assets(project_root)
-    cover_asset = suppress_duplicate_cover(cover_asset, proof_assets)
-    graphic_assets = collect_graphic_assets(project_root)
-    video_assets = collect_video_assets(project_root)
-    assets = interleave_assets(
-        cover_asset=cover_asset,
-        proof_assets=proof_assets,
-        graphic_assets=graphic_assets,
-        video_assets=video_assets,
-    )
+    if args.asset_mode == "ai-images-only":
+        cover_asset = None
+        proof_assets = collect_ai_image_assets(project_root)
+        graphic_assets = []
+        video_assets = []
+        assets = proof_assets
+    else:
+        cover_asset = collect_cover_asset(project_root)
+        proof_assets = collect_proof_assets(project_root)
+        cover_asset = suppress_duplicate_cover(cover_asset, proof_assets)
+        graphic_assets = collect_graphic_assets(project_root)
+        video_assets = collect_video_assets(project_root)
+        assets = interleave_assets(
+            cover_asset=cover_asset,
+            proof_assets=proof_assets,
+            graphic_assets=graphic_assets,
+            video_assets=video_assets,
+        )
 
     total_duration = media_duration(voiceover_audio)
     cues = parse_srt(subtitles)
@@ -2177,14 +2390,27 @@ def main() -> int:
     )
     chapter_effects_by_chapter = load_chapter_effects(project_root)
     sequence = assign_assets(slots, assets, chapter_targets, chapter_effects_by_chapter, chapter_order)
-    sequence = align_typewriter_effects_to_subtitles(
-        sequence,
-        chapter_effects_by_chapter=chapter_effects_by_chapter,
-        subtitle_cues=cues,
-        chapter_order=chapter_order,
+    if not args.disable_typewriter_overlays:
+        sequence = align_typewriter_effects_to_subtitles(
+            sequence,
+            chapter_effects_by_chapter=chapter_effects_by_chapter,
+            subtitle_cues=cues,
+            chapter_order=chapter_order,
+        )
+    else:
+        for item in sequence:
+            item["typewriter_text"] = None
+            item["typewriter_anchor"] = None
+            item["typewriter_chars_per_second"] = None
+            item["typewriter_start_offset_seconds"] = None
+            item["typewriter_duration_seconds"] = None
+    if args.asset_mode != "ai-images-only":
+        sequence = ensure_opening_variety(sequence, assets=assets)
+    quality = (
+        build_ai_images_only_quality_report(sequence)
+        if args.asset_mode == "ai-images-only"
+        else build_quality_report(sequence, proof_assets_available=bool(proof_assets))
     )
-    sequence = ensure_opening_variety(sequence, assets=assets)
-    quality = build_quality_report(sequence, proof_assets_available=bool(proof_assets))
     render_sequence(
         sequence=sequence,
         output_video=output_video,
@@ -2205,6 +2431,7 @@ def main() -> int:
         "duration_seconds": round(total_duration, 3),
         "chapter_order": chapter_order,
         "quality": quality,
+        "asset_mode": args.asset_mode,
         "sequence": [
             {
                 **{key: value for key, value in item.items() if key != "asset_path"},

@@ -179,3 +179,85 @@ def test_build_topic_backlog_prefers_concrete_fresh_topic(tmp_path: Path) -> Non
     assert by_topic["为什么你学了很多东西，人生还是没变"]["freshness_score"] > by_topic["普通人最该建立的，不是知识库，而是决策框架"]["freshness_score"]
     assert by_topic["为什么你学了很多东西，人生还是没变"]["proof_handle_score"] >= 4
     assert by_topic["普通人最该建立的，不是知识库，而是决策框架"]["repeat_risk"] >= 3
+
+
+def test_build_topic_backlog_generates_selected_brief_from_current_winner(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    script_path = repo_root / "extensions" / "skills" / "topic-selection" / "scripts" / "build_topic_backlog.py"
+    media_ops_root = tmp_path / "media-ops"
+    reference_library_root = build_reference_library(tmp_path)
+
+    project_root = media_ops_root / "2026-05-06-bilibili-reliable-trap-ep07"
+    strategy_path = media_ops_root / "_strategy" / "bilibili-knowledge-channel-reset-v2.json"
+    make_recent_package(media_ops_root / "2026-04-12-bilibili-sidehustle-cost-ep05", "被骗了很多年，副业最贵的成本从来不是学费")
+    make_recent_package(media_ops_root / "2026-04-20-bilibili-decision-delay-ep06", "为什么你越想做对决定，越容易一直拖着不决定")
+
+    write_json(
+        strategy_path,
+        {
+            "date": "2026-05-06",
+            "platform": "bilibili",
+            "objective": "为知识频道挑出下一条最适合接在副业题之后的中视频。",
+            "account_thesis": "我们用真实案例和反常识拆解，帮年轻人看懂社会规则、赚钱逻辑和决策误区。",
+            "selection_context": {
+                "series_name": "现实判断力",
+                "mother_theme": "现代年轻人在职场、赚钱和自我决策中最常见的错觉、代价与破局动作。",
+                "recent_package_window": 3,
+            },
+            "candidates": [
+                {
+                    "topic": "靠谱陷阱：越能扛事的人，越容易被当成理所当然",
+                    "series_lane": "社会规则",
+                    "core_conflict": "很多人以为能力够强、态度够稳，迟早会被组织看见；现实里，越稳定兜底的人，越容易被默认继续兜底。",
+                    "proof_handle": "临时救火、默认补位、年终评价反差、可见贡献与真实贡献错位。",
+                    "visual_handle": "工作群消息、任务堆积、汇报前后对照、评价指标表。",
+                    "why_now": "它能承接赚钱题之后的频道辨识度建设。",
+                    "lenses": ["career", "social_rules", "decision"],
+                    "production_cost": "medium",
+                },
+                {
+                    "topic": "普通人最容易亏掉的，不是钱，而是一次出手的勇气",
+                    "series_lane": "决策误区",
+                    "core_conflict": "很多人表面在规避风险，实际上是在把所有成长机会都交给确定性幻觉。",
+                    "proof_handle": "错过转岗、错过项目窗口、观望太久后的机会成本。",
+                    "visual_handle": "收益曲线、空仓等待、时间线对照。",
+                    "why_now": "适合后续补强决策误区主线。",
+                    "lenses": ["money", "decision", "career"],
+                    "production_cost": "high",
+                },
+            ],
+        },
+    )
+
+    run_command(
+        [
+            sys.executable,
+            str(script_path),
+            "--project-root",
+            str(project_root),
+            "--strategy-file",
+            str(strategy_path),
+            "--reference-library-root",
+            str(reference_library_root),
+            "--media-ops-root",
+            str(media_ops_root),
+        ],
+        repo_root,
+    )
+
+    payload = json.loads((project_root / "planning" / "topic-selection.json").read_text(encoding="utf-8"))
+    selected_topic = payload["selected_topic"]
+
+    assert selected_topic["topic"] in {
+        "靠谱陷阱：越能扛事的人，越容易被当成理所当然",
+        "普通人最容易亏掉的，不是钱，而是一次出手的勇气",
+    }
+    assert "输入堆积" not in selected_topic["next_action"]
+    if selected_topic["topic"] == "靠谱陷阱：越能扛事的人，越容易被当成理所当然":
+        assert "临时救火" in "".join(selected_topic["reason_to_choose"])
+        assert any("兜底" in item for item in selected_topic["risks_to_watch"])
+        assert "可见贡献" in selected_topic["next_action"]
+    else:
+        assert "观望太久" in "".join(selected_topic["reason_to_choose"])
+        assert any("机会" in item or "确定性幻觉" in item for item in selected_topic["risks_to_watch"])
+        assert "机会成本" in selected_topic["next_action"]

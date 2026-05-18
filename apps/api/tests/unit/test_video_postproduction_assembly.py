@@ -72,6 +72,38 @@ def make_audio_tone(path: Path, *, duration_seconds: float, frequency: int, work
     )
 
 
+def test_image_filter_uses_full_bleed_crop_without_black_padding() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    sys.path.insert(
+        0,
+        str(repo_root / "extensions" / "skills" / "video-postproduction-assembly" / "scripts"),
+    )
+    try:
+        import build_visual_timeline
+
+        filter_graph = build_visual_timeline.image_filter(
+            asset_path="assets/graphics/card-01-hook.png",
+            width=1920,
+            height=1080,
+            fps=60,
+            duration=4.0,
+            motion_preset="static_hold",
+            motion_zoom_ratio=1.0,
+            typewriter_text=None,
+            typewriter_anchor=None,
+            typewriter_chars_per_second=None,
+            typewriter_start_offset_seconds=None,
+            typewriter_duration_seconds=None,
+        )
+    finally:
+        sys.path.pop(0)
+
+    assert "force_original_aspect_ratio=increase" in filter_graph
+    assert "crop=1920:1080" in filter_graph
+    assert "pad=1920:1080" not in filter_graph
+    assert "black" not in filter_graph
+
+
 @pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg/ffprobe required")
 def test_render_narrated_cut_outputs_manifest_and_verification(tmp_path: Path) -> None:
     """The render helper retimes the source cut and emits structured verification artifacts."""

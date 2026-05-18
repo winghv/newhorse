@@ -37,6 +37,7 @@ python3 extensions/skills/script-polishing/scripts/build_reference_script_patter
 
 3. 再结合当前项目的：
    - `planning/topic-selection.json`
+   - `planning/creative-divergence-brief.json`
    - `angles/angle-brief.json`
    - `angles/attention-structure-template.json`
    - `content/*.json`
@@ -69,6 +70,11 @@ python3 extensions/skills/script-polishing/scripts/build_script_polish_packet.py
   - 要兼顾宏观系统视角与贴身生活细节
 - 默认每条作品都应完整收束。
   - 只有显式声明 `multipart` / `上下集` 时，结尾才允许把关键解释留到下一条。
+- 默认每条作品还要显式处理“模板疲劳”：
+  - 不允许连续复用同一种开头承诺、同一种三段式解释、同一种案例顺序或同一种结尾 CTA
+  - `hard_constraints` 只能锁定胜负关键，不得把整篇稿件压成固定段落模板
+  - `freedom_zones` 必须包含至少 `2` 个可以改变叙事装置、证据顺序或表达风格的位置
+  - rewrite loop 必须检查 `forbidden_repeats` 是否被重新带回稿件
 
 ## Output Artifacts
 
@@ -81,6 +87,8 @@ python3 extensions/skills/script-polishing/scripts/build_script_polish_packet.py
     - `audience_psychology_contract`
     - `hard_constraints`
     - `freedom_zones`
+    - `creative_divergence_contract`
+    - `forbidden_repeats`
     - `opening_contract`
     - `section_blueprint`
     - `borrowed_plays`
@@ -92,6 +100,8 @@ python3 extensions/skills/script-polishing/scripts/build_script_polish_packet.py
 
 - 不要把参考视频照抄成“换词模版”
 - 只锁死最关键的硬约束，不把中段所有论证顺序写死
+- 如果当前稿件和最近作品只是换题面但沿用同一思考路径，必须判为需要重写，而不是只做润色
+- 如果 `creative-divergence-brief` 缺失，先补齐或明确阻塞，不要直接进入母稿定稿
 - 输出必须能回答：
   - 这条视频前 `30` 秒必须做到什么
   - 中段怎样变厚，而不是一直重复同一种解释

@@ -98,6 +98,7 @@ specialist 返回后，主控必须明确：
 输出：
 
 - `research brief`
+- B 站中视频还要输出 `research/material-search-brief.json`，包括同题搜索 query、候选视频 seeds、评论区/案例/视觉素材 handles 和反模板约束
 - `signal list`
 - `evidence`
 - `risk notes`
@@ -138,6 +139,7 @@ specialist 返回后，主控必须明确：
 - `priority score`
 - `selected topic`
 - 对 Bilibili 中视频，建议先显式维护 `planning/topic-pool.json` 或共享 strategy file，再生成 `planning/topic-selection.json`
+- `planning/creative-divergence-brief.json`
 - 如果平台包含小红书，还要输出 `series lanes` 和 `note_video_mix`
 
 ### 4. Angle Design
@@ -146,12 +148,15 @@ specialist 返回后，主控必须明确：
 
 - `selected topic`
 - `benchmark deck`
+- `planning/creative-divergence-brief.json`
 
 输出：
 
 - `angle brief`
 - `hook hypotheses`
 - `proof plan`
+- `creative divergence brief`
+- `forbidden repeats`
 - `kill reasons`
 - 如果目标平台是 Bilibili 中视频，还要输出：
   - `angles/attention-structure-template.json`
@@ -166,6 +171,8 @@ specialist 返回后，主控必须明确：
 - `angle brief`
 - `benchmark deck`
 - `benchmarks/reference-script-patterns.json`
+- `research/material-search-brief.json`
+- `planning/creative-divergence-brief.json`
 
 输出：
 
@@ -174,12 +181,18 @@ specialist 返回后，主控必须明确：
 - `runtime_strategy`
 - `hard constraints`
 - `freedom zones`
+- `creative divergence contract`
+- `forbidden repeats`
 - `section blueprint`
 - `borrowed plays`
+- `material research contract`
 - `rewrite loop`
 - `delegation contract`
 
 补充约束：
+
+- B 站中视频如果缺少 `research/material-search-brief.json`，`content/script-polish-packet.json` 的 `material_research_contract.status` 必须是 `revise`，不得直接进入母稿定稿。
+- 素材调研不是只找“参考稿件”，还要沉淀画面线索：候选视频 URL/BV、评论问题、案例对照、可生成镜头 prompt 或 B-roll 搜索方向。
 
 - `supervisor-led` 下，真正的写稿 / 改稿默认由 `script-doctor` 执行
 - 主控只负责写 brief、给 inputs、审 gate 和整合轻量修正
@@ -190,12 +203,14 @@ specialist 返回后，主控必须明确：
 输入：
 
 - `angle brief`
+- `planning/creative-divergence-brief.json`
 
 输出：
 
 - `content packet`
 - `platform variants`
 - `hook variants`
+- `creative divergence application`
 - `visual plan`
 - `asset checklist`
 - `asset source map`
@@ -245,12 +260,12 @@ specialist 返回后，主控必须明确：
 如果产物是视频，`Production` 必须继续细分为：
 
 1. `video shape`: `short-video` 或 `midlong-video`
-2. `footage sourcing`: 如果是中长视频，先规划网上合法可用片段和可替代 B-roll
-3. `asset planning`: 真实素材、截图、网上合法片段、动效、TTS、AI 图像、AI 视频分别如何分配
+2. `visual source strategy`: 先判定主视觉路径。解释型 / 认知类中长视频默认 `ai-images-only`；事件、产品、地点、实操演示类内容才默认启用真实 footage / B-roll。
+3. `asset planning`: AI 图像、真实素材、截图、网上合法片段、动效、TTS、AI 视频分别如何分配；AI 视频只作为高价值镜头增强，不作为默认覆盖全片方案
 4. `narration postproduction`: 产出旁白、字幕草案、混音说明和渲染交接包
 5. `platform packaging`: 按平台产出最终成片包，而不是拿一份通用脚本硬改
-6. `postproduction assembly`: 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果 `assembly_strategy = rebuild_timeline` 且缺少 rough cut，必须自动从图卡、proof pack 和已获批素材拼出基础时间线，并留下渲染验证
-7. `automation execution plan`: 把 sourcing、SVG 导出、proof pack、render 这些自动入口整理成可执行计划，避免退化成手工列表
+6. `postproduction assembly`: 把 rough cut、旁白、字幕和混音计划装配成 final cut；如果 `assembly_strategy = rebuild_timeline` 且缺少 rough cut，必须按 `visual_policy.asset_mode` 自动生成基础时间线，并留下渲染验证
+7. `automation execution plan`: 把 AI 图生成、素材 sourcing、封面导出、render 这些自动入口整理成可执行计划，避免退化成手工列表
 
 推荐 skill 路由：
 
@@ -286,18 +301,19 @@ specialist 返回后，主控必须明确：
 
 自动化优先规则：
 
-- `B-roll` 默认先走 `licensed-footage-sourcing` runner，不靠人工逐段找素材
+- 解释型 / 认知类中长视频默认先走 `ai-images-only`：每章批量生成足量无字 16:9 AI 图，再由 `build_visual_timeline.py --asset-mode ai-images-only --disable-typewriter-overlays` 生成基础时间线
+- `B-roll` 只在内容需要真实地点、真实产品、真实事件或实操演示时默认启用；启用时走 `licensed-footage-sourcing` runner，不靠人工逐段找素材
 - 对标研究里如果已经拿到参考视频 URL / BV 号，默认先走 `reference-video-ingest`，优先沉淀现成字幕，不再靠手工反复回看摘抄
 - `licensed-footage-sourcing` 对中视频默认同时产出 production shortlist 和 exploration shortlist；后者用于放大 B-roll 候选池，不直接替代 production manifest
-- 图卡、封面和其他 SVG 资产默认先走确定性导出，不靠人工截图导图
-- 每章都要先结构化声明 `proof_asset`、`supporting_b_roll`、`fallback_graphics` 和 `max_repeat_uses`
+- 图卡不再作为解释型中长视频主画面 fallback；封面和少量证据页可以走确定性导出，但主时间线不得退化成全屏文字卡
+- 每章都要先结构化声明 `proof_asset`、`supporting_b_roll`、`fallback_graphics`、`ai_image_prompts` 和 `max_repeat_uses`
 - Bilibili 封面如果走 AI 生成，默认是 `MiniMax 无字底图 + 本地确定性文字叠加`，不要把中文大字直接交给模型生成
-- “AI 给出相反答案”这类证据，默认先产出结构化 `prompt proof pack` + 图卡，不把人工录屏当成默认必需品
+- “AI 给出相反答案”这类证据，默认转化为生图 prompt、旁白说明和必要的短字幕，不再默认产出全屏 proof 图卡
 - 缺字幕时，默认从 `voiceover-segments.json` + 已生成音频自动产出 `subtitle_draft`，不把人工逐句打轴当成默认步骤
 - 对讲解型视频，默认自动补 `voice-performance-plan.json` 和 `subtitle-style-pack.json`，不再接受整条统一语速、空 emotion 的 handoff
 - 对旁白驱动中视频，默认自动补 `scene-manifest.json`、`transition-plan.json` 和 `emphasis-fx-plan.json`，不再把“转场怎么做”留到最后凭感觉决定
 - `rebuild_timeline` 缺 rough cut 时，默认自动生成 `auto-base-cut.mp4`，不再把“先手工剪一个母版”当成前置条件
-- `rebuild_timeline` 自动生成的基础时间线必须同时输出质量摘要，例如 `image_slot_ratio`、`max_image_slot_duration_seconds`、`image_motion_enabled_count`，避免自动化可跑通但观感滑落
+- `rebuild_timeline` 自动生成的基础时间线必须同时输出质量摘要。`ai-images-only` 模式必须检查 `ai_image_slot_count == slot_count`、`external/graphics/video/typewriter == 0`、`unique_asset_count` 足够，避免自动化可跑通但观感滑落
 - `visual-diversity-report.json` 必须额外检查重复素材是否超过章节级 `max_repeat_uses`
 - 旁白驱动的视频在装配 QA 中必须额外检查 subtitle alignment drift，不能只验证“字幕存在”
 - `scene-assembly-report.json` 必须额外检查 scene / transition / emphasis 计划是否齐全，以及是否和装配结果保持一致
@@ -308,6 +324,7 @@ specialist 返回后，主控必须明确：
 输入：
 
 - `content packet`
+- `planning/creative-divergence-brief.json`
 
 输出：
 
@@ -317,6 +334,7 @@ specialist 返回后，主控必须明确：
 - `review decision`
 - `issues`
 - `stronger alternatives`
+- `review/template-fatigue-report.json`
 - 如果目标平台是 Bilibili 中视频，还要输出 `review/opening-scorecard.json`
 
 如果产物是视频，竞争审校至少额外检查：
@@ -331,6 +349,8 @@ specialist 返回后，主控必须明确：
 - 旁白是否清晰推进理解，而不是只做背景音
 - 字幕是否和口播一致，是否影响阅读和看图
 - 结尾是否给出了继续看下一条的理由，而不是只做口号式收尾
+- 是否和最近 `3-5` 条作品在思路、证据、叙事装置和视觉语法上形成实质差异
+- 是否触犯 `planning/creative-divergence-brief.json` 里的 forbidden repeats
 
 如果产物是小红书图文，竞争审校至少额外检查：
 
@@ -339,6 +359,7 @@ specialist 返回后，主控必须明确：
 - 每页是否值得用户继续翻下一页
 - 正文和首评是否补足了图上没说清的内容
 - 收藏理由是否足够具体
+- 是否只是复用上一期的首图承诺、页序推进和评论触发
 
 审核结论只允许：
 
@@ -348,9 +369,16 @@ specialist 返回后，主控必须明确：
 
 竞争审校门槛：
 
-- `pass`: 总分 `>= 29/35`，且 `hook_strength`、`proof_strength`、`platform_fit` 都 `>= 3`
-- `revise`: 总分 `22-28/35`，或存在单项 `= 2`
-- `block`: 总分 `<= 21/35`，或关键单项 `<= 1`
+- 评分卡必须包含 `hook_strength`、`opening_hold_power`、`novelty`、`creative_divergence`、`proof_strength`、`platform_fit`、`emotional_pull`、`save_share_potential`、`follow_conversion_power` 和 `series_potential`，每项 `1-5`，总分 `50`
+- `pass`: 总分 `>= 41/50`，且没有任何单项低于 `3`
+- `revise`: 总分 `32-40/50`，或存在任一单项 `= 2`
+- `block`: 总分 `<= 31/50`，或关键单项 `<= 1`
+
+模板疲劳补充门槛：
+
+- 如果 `template-fatigue-report.similarity_score >= 4`，不能判 `pass`
+- 如果当前作品只是上一期换标题、换案例名或换平台包装，不能判 `pass`
+- 如果 `creative_divergence` 低于 `3/5`，即使总分达标也必须 `revise`
 
 ### 7. Compliance Review
 
@@ -449,6 +477,8 @@ specialist 返回后，主控必须明确：
 - `benchmark_refs`: 关键对标样本与观察点
 - `reference_script_patterns`: 参考视频稿件沉淀出的可复用写稿打法
 - `hook_hypotheses`: 预期最有胜率的开头与评论触发点
+- `creative_divergence_brief`: 本期相对最近内容的新思考路径、差异轴、实验假设和 forbidden repeats
+- `template_fatigue_report`: 发布前判断是否只是模板换词复用，以及必须修改的重复元素
 - `script_polish_packet`: 对当前项目的写稿契约，记录 hard constraints、freedom zones 和 rewrite loop
 - `deliverable_type`: 图文、短视频或中长视频
 - `series_lanes`: 如果平台包含小红书，说明栏目和系列位
@@ -497,6 +527,7 @@ specialist 返回后，主控必须明确：
 
 视频 sourcing 产物建议命名：
 
+- `planning/creative-divergence-brief.json`
 - `planning/cognitive-punch-gate.json`
 - `sources/source-manifest.json`
 - `sources/source-shortlist.json`
@@ -511,6 +542,7 @@ specialist 返回后，主控必须明确：
 - `content/final-cut/*.mp4`
 - `review/render-verification.md`
 - `review/assembly-qa-report.json`
+- `review/template-fatigue-report.json`
 - `publish/release-record.json`
 
 项目内可直接用命令跑这一步：
@@ -524,6 +556,9 @@ specialist 返回后，主控必须明确：
 - 任何阶段都要明确区分事实、推断和建议。
 - 如果上游交付物不完整，先指出缺口，不要自行脑补。
 - 不要跨平台原样复用同一份文案。
+- 不要把标准化流程误用成固定创作模板。每条内容进入角度设计前必须说明相对最近作品的新思考路径、证据变化、叙事装置和 forbidden repeats。
+- 系列内容可以有稳定结构，但至少要在用户任务、证据类型、叙事装置、视觉语法、互动触发中改变 `3` 个维度。
+- 如果竞争审校判断用户会觉得“这期和上期一个意思”，即使其他分数合格也只能 `revise`，不能进入发布。
 - 视频生成预算属于生产约束，不是发布时才考虑的事；必须在素材规划阶段就做取舍。
 - 如果已知 MiniMax 视频生成额度是每天 `6` 次、每次 `6` 秒，则默认把它视为 `36` 秒/天的稀缺镜头预算，而不是可随意试错的创意空间。
 - 单条内容默认不应占用超过 `2` 次 MiniMax 视频生成；若计划使用 `3+` 次，必须写明为什么合法片段、录屏、图像动效和自有素材都不够。

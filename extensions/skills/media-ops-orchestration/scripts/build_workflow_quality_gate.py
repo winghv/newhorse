@@ -15,6 +15,7 @@ QUALITY_DIMENSIONS = (
     "voice_performance_status",
     "subtitle_quality_status",
     "visual_diversity_status",
+    "visual_production_status",
     "scene_assembly_status",
     "generation_budget_status",
 )
@@ -196,6 +197,15 @@ def build_dimension_statuses(project_root: Path, packet: dict[str, Any]) -> dict
     visual_diversity = load_json(visual_diversity_path)
     visual_status = str(visual_diversity.get("status") or ("revise" if is_bilibili_midform else "not_applicable"))
 
+    visual_production_path = project_root / "assets" / "visual-production-gate.json"
+    visual_production = load_json(visual_production_path)
+    visual_production_status = str(visual_production.get("status") or ("revise" if is_bilibili_midform else "not_applicable"))
+    visual_production_reasons = [
+        str(item)
+        for item in visual_production.get("reasons", [])
+        if isinstance(item, str) and item.strip()
+    ]
+
     scene_paths = [
         project_root / "content" / "postproduction" / "scene-manifest.json",
         project_root / "content" / "postproduction" / "transition-plan.json",
@@ -253,6 +263,14 @@ def build_dimension_statuses(project_root: Path, packet: dict[str, Any]) -> dict
             status=visual_status if is_bilibili_midform else "not_applicable",
             artifact_paths=[visual_diversity_path],
             project_root=project_root,
+        ),
+        "visual_production_status": make_dimension(
+            key="visual_production_status",
+            applicable=is_bilibili_midform,
+            status=visual_production_status if is_bilibili_midform else "not_applicable",
+            artifact_paths=[visual_production_path],
+            project_root=project_root,
+            reasons=visual_production_reasons,
         ),
         "scene_assembly_status": make_dimension(
             key="scene_assembly_status",

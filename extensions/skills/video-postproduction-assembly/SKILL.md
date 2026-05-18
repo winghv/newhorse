@@ -134,8 +134,10 @@ python3 ../../../extensions/skills/video-postproduction-assembly/scripts/run_ren
 - `scripts/run_render_workflow.py`
   - 一步执行字幕补齐 / 基础时间线重建 / build + render
 - `scripts/build_visual_timeline.py`
-  - 用图卡、proof pack 和已获批 B-roll 自动拼出 `auto-base-cut.mp4`
-  - 对图卡自动补基础镜头运动，并在 `auto-base-cut-plan.json` 里写出质量摘要，防止自动时间线长期退化成纯静态拼接
+  - 按 `visual_policy.asset_mode` 自动拼出 `auto-base-cut.mp4`
+  - 解释型中长视频优先使用 `--asset-mode ai-images-only --disable-typewriter-overlays`，只允许 AI 生图进入主时间线
+  - 默认路径仍支持 proof pack、图卡和已获批 B-roll，但这些不再是认知类视频的主画面兜底
+  - 在 `auto-base-cut-plan.json` 里写出质量摘要，防止自动时间线长期退化成纯静态拼接、文字卡或 mock 素材
 - `../minimax-narration-postproduction/scripts/build_subtitles_from_segments.py`
   - 用 `voiceover-segments.json` 和真实音频时长自动产出 `subtitle_draft`
 - `scripts/render_narrated_cut.py`

@@ -651,6 +651,7 @@ def ensure_source_video(
     assembly_strategy: str,
     voiceover_audio: Path,
     subtitles: Path | None,
+    visual_policy: dict[str, Any] | None = None,
 ) -> Path:
     auto_base_cut = (project_root / "content" / "postproduction" / "auto-base-cut.mp4").resolve()
     auto_base_cut_plan = (project_root / "content" / "postproduction" / "auto-base-cut-plan.json").resolve()
@@ -702,6 +703,8 @@ def ensure_source_video(
             "--preset",
             DEFAULT_RENDER_PRESET,
         ]
+        if visual_policy and visual_policy.get("asset_mode") == "ai-images-only":
+            command.extend(["--asset-mode", "ai-images-only", "--disable-typewriter-overlays"])
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
         run_command(command)
@@ -735,6 +738,8 @@ def ensure_source_video(
             "--preset",
             DEFAULT_RENDER_PRESET,
         ]
+        if visual_policy and visual_policy.get("asset_mode") == "ai-images-only":
+            command.extend(["--asset-mode", "ai-images-only", "--disable-typewriter-overlays"])
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
         run_command(command)
@@ -753,6 +758,7 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
     content_packet_path = find_content_packet(project_root)
     content_packet = load_json(content_packet_path)
     primary_packet = content_packet.get("content_packet") if isinstance(content_packet.get("content_packet"), dict) else content_packet
+    visual_policy = primary_packet.get("visual_policy") if isinstance(primary_packet.get("visual_policy"), dict) else {}
     render_targets = voiceover_profile.get("render_targets", {})
     mix_defaults = voiceover_profile.get("mix_defaults", {})
     content_id = voiceover_profile.get("content_id") or primary_packet.get("content_id") or project_root.name
@@ -782,6 +788,7 @@ def build_render_plan(args: argparse.Namespace) -> tuple[dict[str, Any], Path]:
         assembly_strategy=assembly_strategy,
         voiceover_audio=voiceover_audio,
         subtitles=subtitles,
+        visual_policy=visual_policy,
     )
     output_video = resolve_candidate(project_root, args.output_video) or derive_output_video(
         source_video,

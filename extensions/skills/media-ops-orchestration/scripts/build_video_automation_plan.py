@@ -104,6 +104,11 @@ def first_path(packet: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
+def ai_images_only_visual_policy(packet: dict[str, Any]) -> bool:
+    visual_policy = packet.get("visual_policy") if isinstance(packet.get("visual_policy"), dict) else {}
+    return str(visual_policy.get("asset_mode") or "").strip() == "ai-images-only"
+
+
 def build_task(
     task_id: str,
     title: str,
@@ -147,12 +152,14 @@ def write_markdown(path: Path, payload: dict[str, Any]) -> None:
     lines.append("")
     lines.append(f"- `deliverable_type`: `{payload['deliverable_type']}`")
     lines.append(f"- `assembly_strategy`: `{payload.get('assembly_strategy') or 'unknown'}`")
+    lines.append(f"- `visual_asset_mode`: `{payload['summary']['visual_asset_mode']}`")
     lines.append(f"- `graphics_svg_count`: `{payload['summary']['graphics_svg_count']}`")
     lines.append(f"- `graphics_png_count`: `{payload['summary']['graphics_png_count']}`")
     lines.append(f"- `source_manifest_hold_count`: `{payload['summary']['source_manifest_hold_count']}`")
     lines.append(f"- `chapter_coverage_status`: `{payload['summary']['chapter_coverage_status']}`")
     lines.append(f"- `scene_asset_plan_exists`: `{payload['summary']['scene_asset_plan_exists']}`")
     lines.append(f"- `visual_diversity_status`: `{payload['summary']['visual_diversity_status']}`")
+    lines.append(f"- `visual_production_status`: `{payload['summary']['visual_production_status']}`")
     lines.append(f"- `approved_generation_slot_count`: `{payload['summary']['approved_generation_slot_count']}`")
     lines.append(f"- `voiceover_status`: `{payload['summary']['voiceover_status']}`")
     lines.append(f"- `voiceover_audio_exists`: `{payload['summary']['voiceover_audio_exists']}`")
@@ -191,6 +198,7 @@ def main() -> int:
     content_id = primary.get("content_id") or project_root.name
     deliverable_type = primary.get("deliverable_type") or "unknown"
     assembly_strategy = primary.get("assembly_strategy")
+    prefer_ai_images_only = ai_images_only_visual_policy(primary)
     voiceover_status = (primary.get("voiceover_assets") or {}).get("status") or "unknown"
 
     graphics_dir = project_root / "assets" / "graphics"
@@ -221,6 +229,9 @@ def main() -> int:
     generation_ledger_path = project_root / "assets" / "generation-ledger.json"
     visual_diversity_report_path = project_root / "assets" / "visual-diversity-report.json"
     visual_diversity_report = load_json(visual_diversity_report_path)
+    visual_production_gate_path = project_root / "assets" / "visual-production-gate.json"
+    visual_production_gate = load_json(visual_production_gate_path)
+    visual_production_status = str(visual_production_gate.get("status") or "missing")
     workflow_quality_gate_path = project_root / "review" / "workflow-quality-gate.json"
     workflow_quality_gate = load_json(workflow_quality_gate_path)
     voiceover_profile_path = project_root / "content" / "postproduction" / "voiceover-profile.json"
@@ -251,6 +262,7 @@ def main() -> int:
     subtitle_completed = bool(subtitle_output_path and subtitle_output_path.exists())
     subtitle_up_to_date = is_up_to_date(subtitle_output_path, [voiceover_output_path, tts_segments_path])
     render_completed = render_manifest_path.exists() and bool(final_cut_paths)
+    visual_production_ready = visual_production_gate_path.exists() and visual_production_status == "pass"
 
     project_arg = relative_to_project(project_root, repo_root())
     tasks: list[dict[str, Any]] = []
@@ -258,12 +270,14 @@ def main() -> int:
         build_task(
             task_id="footage-sourcing",
             title="自动拉取合法 B-roll",
-            status="completed"
+            status="not_applicable"
+            if prefer_ai_images_only
+            else "completed"
             if source_manifest_path.exists() and coverage_status == "pass" and license_summary.get("approved_count", 0) > 0
             else "ready_to_run"
             if source_manifest_path.exists()
             else "required",
-            why="B-roll 应由 licensed-footage-sourcing 自动完成，不应靠人工逐段找素材。",
+            why="只有素材型视频才默认拉 B-roll；AI 图主视觉视频不再先跑外部素材，避免 mock 素材和文字画面进入主时间线。",
             command=[
                 "python3",
                 "extensions/skills/licensed-footage-sourcing/scripts/run_external_footage_workflow.py",
@@ -290,19 +304,21 @@ def main() -> int:
                 "sources/exploration-ingest-manifest.json",
                 "sources/chapter-coverage-report.json",
             ],
-            blocking=coverage_status != "pass",
+            blocking=False if prefer_ai_images_only else coverage_status != "pass",
         )
     )
     tasks.append(
         build_task(
             task_id="svg-export",
             title="批量导出图卡和封面 PNG",
-            status="completed"
+            status="not_applicable"
+            if prefer_ai_images_only
+            else "completed"
             if graphics_export_manifest.exists() and (png_assets or root_png_assets)
             else "ready_to_run"
             if svg_assets or root_svg_assets
             else "not_applicable",
-            why="图卡和封面应走确定性导出，不应人工逐张截图或手动导图。",
+            why="解释型中视频主画面不再默认依赖图卡；只保留封面确定性导出，主时间线走 AI 图资产池。",
             command=[
                 "python3",
                 "extensions/skills/video-asset-planning/scripts/export_svg_assets.py",
@@ -377,6 +393,24 @@ def main() -> int:
     )
     tasks.append(
         build_task(
+            task_id="visual-production-gate",
+            title="阻断全图卡和素材生产缺口",
+            status="completed" if visual_production_ready else "ready_to_run",
+            why="TTS 和 render 前必须确认主画面不是全图卡，且真实素材 / 生成素材已经实际落地。",
+            command=[
+                "python3",
+                "extensions/skills/video-asset-planning/scripts/build_visual_production_gate.py",
+                "--project-root",
+                project_arg,
+            ],
+            outputs=[
+                "assets/visual-production-gate.json",
+            ],
+            blocking=not visual_production_ready,
+        )
+    )
+    tasks.append(
+        build_task(
             task_id="minimax-shot-plan",
             title="生成 MiniMax 镜头计划与调用台账",
             status="completed" if minimax_shot_plan_path.exists() and generation_ledger_path.exists() else "ready_to_run",
@@ -398,11 +432,11 @@ def main() -> int:
         build_task(
             task_id="proof-pack",
             title="用结构化 proof pack 替代人工录屏",
-            status="completed" if prompt_proof_pack_path.exists() else "required",
-            why="解释型视频的证据层应优先使用结构化 prompt proof + 图卡，不把人工录屏当成默认阻塞项。",
+            status="not_applicable" if prefer_ai_images_only else "completed" if prompt_proof_pack_path.exists() else "required",
+            why="AI 图主视觉路径不再把 proof 图卡作为主画面兜底；证据层应转化为生图 prompt 和字幕口播，不再生成全屏文字卡。",
             command=None,
             outputs=["sources/prompt-proof-pack.json", "assets/graphics/card-04-answer-contrast.png"],
-            blocking=not prompt_proof_pack_path.exists(),
+            blocking=False if prefer_ai_images_only else not prompt_proof_pack_path.exists(),
         )
     )
     tasks.append(
@@ -431,6 +465,8 @@ def main() -> int:
             title="基于 TTS handoff 生成最终口播音频",
             status="completed"
             if voiceover_completed
+            else "blocked"
+            if not visual_production_ready
             else "ready_to_run"
             if tts_handoff_completed and minimax_cli.exists()
             else "required",
@@ -445,7 +481,8 @@ def main() -> int:
                 "content/postproduction/*.mp3",
                 "content/postproduction/voiceover-generation-manifest.json",
             ],
-            blocking=not voiceover_completed and not (tts_handoff_completed and timed_tts_wrapper.exists() and minimax_cli.exists()),
+            blocking=not voiceover_completed
+            and (not visual_production_ready or not (tts_handoff_completed and timed_tts_wrapper.exists() and minimax_cli.exists())),
         )
     )
     tasks.append(
@@ -454,6 +491,8 @@ def main() -> int:
             title="根据最终口播音频重生成字幕",
             status="completed"
             if subtitle_up_to_date
+            else "blocked"
+            if not visual_production_ready
             else "ready_to_run"
             if voiceover_completed and tts_segments_path and tts_segments_path.exists()
             else "required",
@@ -467,14 +506,21 @@ def main() -> int:
             outputs=[
                 "content/postproduction/*.srt",
             ],
-            blocking=not subtitle_up_to_date and not (voiceover_completed and tts_segments_path and tts_segments_path.exists()),
+            blocking=not subtitle_up_to_date
+            and (not visual_production_ready or not (voiceover_completed and tts_segments_path and tts_segments_path.exists())),
         )
     )
     tasks.append(
         build_task(
             task_id="render",
             title="跑确定性装配与渲染验证",
-            status="completed" if render_completed else "ready_to_run" if assembly_strategy else "required",
+            status="completed"
+            if render_completed
+            else "blocked"
+            if not visual_production_ready
+            else "ready_to_run"
+            if assembly_strategy
+            else "required",
             why="特效、字幕、混音和最终编码应由可审计的 render workflow 产出。",
             command=[
                 "python3",
@@ -489,19 +535,21 @@ def main() -> int:
                 "review/assembly-qa-report.json",
                 "content/final-cut/*.mp4",
             ],
-            blocking=assembly_strategy is None,
+            blocking=not visual_production_ready or assembly_strategy is None,
         )
     )
 
     notes: list[str] = []
     if hold_items:
         notes.append(f"source manifest 仍有 {len(hold_items)} 个 hold item，需要用自动化 proof lane 或自动素材 runner 消化。")
-    if coverage_status != "pass":
+    if coverage_status != "pass" and not prefer_ai_images_only:
         notes.append("chapter coverage gate 还没 pass，自动化素材补齐后需要重跑 coverage 判断。")
-    if not prompt_proof_pack_path.exists():
+    if not prompt_proof_pack_path.exists() and not prefer_ai_images_only:
         notes.append("当前包缺少结构化 prompt proof pack，人工录屏已不应再作为默认依赖。")
     if visual_diversity_report.get("status") and visual_diversity_report.get("status") != "pass":
         notes.append("visual diversity gate 还没 pass，需要减少重复素材或补更多章节资产。")
+    if not visual_production_ready:
+        notes.append("visual production gate 还没 pass，先补真实 B-roll、AI keyart / generated video 或替换纯文字主画面，再进入 TTS/render。")
     if workflow_quality_gate.get("overall_status") and workflow_quality_gate.get("overall_status") != "pass":
         notes.append("workflow quality gate 还没 pass，发布前需要先修复 revise / block 维度。")
     if subtitle_completed and not subtitle_up_to_date:
@@ -509,7 +557,10 @@ def main() -> int:
     if not voiceover_completed and tts_handoff_completed:
         notes.append("当前已具备 TTS handoff，但还没有最终口播音频；先生成音频，再生成字幕。")
     notes.append("自治模式下，人工录屏只允许作为 fallback，不应再作为 Production Sprint Phase 1 的默认动作。")
-    notes.append("B-roll、图卡导出、后期装配三条链都已有本地 skill 或脚本入口，应先跑自动入口，再看是否需要人工干预。")
+    if prefer_ai_images_only:
+        notes.append("本包使用 ai-images-only 视觉策略：主画面资产只允许 AI 图片，外部素材、图卡和 AI 视频都不是默认时间线输入。")
+    else:
+        notes.append("B-roll、图卡导出、后期装配三条链都已有本地 skill 或脚本入口，应先跑自动入口，再看是否需要人工干预。")
 
     blocking_tasks = [task for task in tasks if task["blocking"] and task["status"] not in {"ready", "draft_ready", "pending_sample_check", "ready_to_run"}]
     if render_completed:
@@ -534,6 +585,8 @@ def main() -> int:
             "scene_asset_plan_exists": scene_asset_plan_path.exists(),
             "visual_evidence_map_exists": visual_evidence_map_path.exists(),
             "visual_diversity_status": visual_diversity_report.get("status"),
+            "visual_production_status": visual_production_status,
+            "visual_production_gate_exists": visual_production_gate_path.exists(),
             "approved_generation_slot_count": len(load_json(minimax_shot_plan_path).get("approved_slots", []))
             if minimax_shot_plan_path.exists()
             else 0,
@@ -550,6 +603,7 @@ def main() -> int:
             "final_cut_count": len(final_cut_paths),
             "auto_base_cut_exists": auto_base_cut_path.exists(),
             "auto_base_quality_status": auto_base_plan.get("quality", {}).get("status"),
+            "visual_asset_mode": "ai-images-only" if prefer_ai_images_only else "default",
         },
         "tasks": tasks,
         "notes": notes,

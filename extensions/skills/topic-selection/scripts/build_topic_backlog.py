@@ -380,6 +380,54 @@ def recent_overlap_notes(topic: str, recent_topics: list[str]) -> list[dict[str,
     return rows[:3]
 
 
+def split_signal_parts(value: str) -> list[str]:
+    parts = [item.strip("「」\"' ") for item in re.split(r"[、，,；;。/\n]+", value) if item.strip()]
+    return parts
+
+
+def extract_mechanism_focus(core_conflict: str, topic: str) -> str:
+    clauses = [item.strip("「」\"' ") for item in re.split(r"[；;。！？!?]+", core_conflict) if item.strip()]
+    if clauses:
+        return max(clauses, key=len)
+    return topic
+
+
+def build_selected_risks(candidate: dict[str, Any]) -> list[str]:
+    topic = str(candidate.get("topic") or "").strip()
+    core_conflict = str(candidate.get("core_conflict") or "").strip()
+    proof_items = split_signal_parts(str(candidate.get("proof_handle") or ""))
+    visual_items = split_signal_parts(str(candidate.get("visual_handle") or ""))
+    mechanism_focus = extract_mechanism_focus(core_conflict, topic)
+
+    evidence_bits = [item for item in (proof_items[:1] + proof_items[-1:] + visual_items[:1]) if item]
+    unique_evidence_bits: list[str] = []
+    for item in evidence_bits:
+        if item not in unique_evidence_bits:
+            unique_evidence_bits.append(item)
+
+    evidence_label = "、".join(unique_evidence_bits[:3]) if unique_evidence_bits else "关键案例和画面证据"
+
+    return [
+        f"不要把「{topic}」重新讲成抽象方法论，开场必须先落到观众熟悉的具体处境。",
+        f"中段不能只下判断，必须把「{mechanism_focus}」讲成一条可验证的现实机制。",
+        f"必须准备 {evidence_label} 这些可见证据，否则很容易退化成空讲道理。",
+    ]
+
+
+def build_selected_next_action(candidate: dict[str, Any]) -> str:
+    topic = str(candidate.get("topic") or "").strip()
+    core_conflict = str(candidate.get("core_conflict") or "").strip()
+    proof_items = split_signal_parts(str(candidate.get("proof_handle") or ""))
+    visual_items = split_signal_parts(str(candidate.get("visual_handle") or ""))
+
+    chain_start = proof_items[0] if proof_items else (visual_items[0] if visual_items else topic)
+    chain_end = proof_items[-1] if len(proof_items) >= 2 else (visual_items[-1] if visual_items else extract_mechanism_focus(core_conflict, topic))
+    if chain_start == chain_end:
+        chain_end = extract_mechanism_focus(core_conflict, topic)
+
+    return f"进入 angle brief，优先把「{chain_start} -> {chain_end}」的证明链和关键画面写死。"
+
+
 def build_candidate_row(candidate: dict[str, Any], recent_topics: list[str], mother_theme: str) -> dict[str, Any]:
     topic = str(candidate.get("topic") or "").strip()
     core_conflict = str(candidate.get("core_conflict") or "").strip()
@@ -452,12 +500,8 @@ def main() -> int:
         "topic": selected["topic"],
         "series_lane": selected.get("series_lane"),
         "reason_to_choose": selection_reason(selected, recent_topics),
-        "risks_to_watch": [
-            "不要重新退回到抽象成长学，必须用输入堆积和现实无变化的对照开场。",
-            "中段不能只批评学习上瘾，必须解释为什么输入会伪装成改变。",
-            "必须准备现实画面证据，否则很容易又退化成模板图卡轮播。",
-        ],
-        "next_action": "进入 angle brief，优先把‘输入堆积 -> 行动断层 -> 身份安慰’三段证明链和可截图框架写死。",
+        "risks_to_watch": build_selected_risks(selected),
+        "next_action": build_selected_next_action(selected),
     }
 
     output_path = (project_root / args.output).resolve()
