@@ -235,10 +235,25 @@ def build_emphasis_fx(
     ]
 
 
-def motion_recipe(asset_type: str) -> str:
+def motion_recipe(asset_type: str, *, index: int = 0) -> str:
+    """运镜库：按镜头序号轮换，避免整片只有 ken_burns_push / steady_crop 两种。
+
+    生成图/图卡用 Ken Burns 家族的多种运镜变体；真实视频用更克制的裁切。
+    """
+    image_motions = [
+        "ken_burns_push",      # 缓推
+        "ken_burns_pull",      # 缓拉
+        "pan_left_to_right",   # 横摇
+        "pan_right_to_left",
+        "tilt_up_reveal",      # 上摇揭示
+        "slow_zoom_diagonal",  # 对角缓推
+        "parallax_drift",      # 视差漂移
+    ]
     if asset_type in DISALLOWED_PRIMARY_ASSET_TYPES:
-        return "ken_burns_push"
-    return "steady_crop"
+        return image_motions[index % len(image_motions)]
+    # 真实视频素材：保留原画运动，仅做轻裁切/稳定。
+    video_motions = ["steady_crop", "subtle_zoom_in", "locked_frame"]
+    return video_motions[index % len(video_motions)]
 
 
 def infer_media_type(raw_path: str | None) -> str:
@@ -362,7 +377,7 @@ def main() -> int:
                 "scene_goal": chapter_goal,
                 "primary_asset": primary_asset,
                 "supporting_assets": scene_asset.get("supporting_b_roll", []),
-                "motion_recipe": motion_recipe(asset_type),
+                "motion_recipe": motion_recipe(asset_type, index=index),
                 "transition_in": "cold_open_cut" if index == 0 else "chapter_pulse",
                 "transition_out": "resolve_hold" if index == len(chapter_outline) - 1 else "content_lift",
                 "subtitle_mode": "bilingual_hardsub",

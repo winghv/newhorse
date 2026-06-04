@@ -172,6 +172,19 @@ def build_gate(project_root: Path) -> dict[str, Any]:
     generation_ledger = load_json(generation_ledger_path)
     chapters = scene_plan.get("chapters") if isinstance(scene_plan.get("chapters"), list) else []
 
+    # 已下载入库的外部素材（参考视频/footage），用于检查"素材是否真被用上"。
+    asset_ingest_manifest = load_json(project_root / "sources" / "asset-ingest-manifest.json")
+    reference_metadata = load_json(project_root / "research" / "reference-video-metadata.json")
+    ingested_entries = [
+        item for item in asset_ingest_manifest.get("assets", asset_ingest_manifest.get("entries", []))
+        if isinstance(item, dict)
+    ]
+    has_ingested_footage = bool(ingested_entries) or bool(reference_metadata)
+
+    # 电影 prompt 多样性（来自 build_minimax_shot_plan 的 diversity 统计）。
+    shot_plan = load_json(project_root / "assets" / "minimax-shot-plan.json")
+    shot_diversity = shot_plan.get("diversity") if isinstance(shot_plan.get("diversity"), dict) else {}
+
     primary_assets = [
         chapter.get("proof_asset")
         for chapter in chapters
@@ -296,6 +309,26 @@ def build_gate(project_root: Path) -> dict[str, Any]:
             "delivered_video_generation_count": delivered_video_generation_count,
             "minimum_generated_video_assets": 2 if visual_asset_mode == "ai-media-rich" else 0,
         },
+        "ingested_footage_utilized": {
+            # 已下载参考视频/footage，却没有任何 b-roll 进入 scene plan -> 素材没用上。
+            "status": "pass"
+            if not has_ingested_footage or production_footage_count > 0
+            else "revise",
+            "has_ingested_footage": has_ingested_footage,
+            "ingested_count": len(ingested_entries),
+            "production_footage_count": production_footage_count,
+        },
+        "cinematic_prompt_diversity": {
+            # 生图 prompt 缺乏镜头语言变化 -> 134 张一个调调。仅在有 shot plan 时检查。
+            "status": "pass"
+            if not shot_diversity
+            or (
+                shot_diversity.get("unique_shot_types", 0) >= 4
+                and shot_diversity.get("unique_lighting", 0) >= 4
+            )
+            else "revise",
+            "diversity": shot_diversity,
+        },
     }
 
     reasons: list[str] = []
@@ -313,6 +346,10 @@ def build_gate(project_root: Path) -> dict[str, Any]:
         reasons.append("ai_image_inventory_too_shallow")
     if checks["ai_video_inventory_depth"]["status"] != "pass":
         reasons.append("ai_video_inventory_too_shallow")
+    if checks["ingested_footage_utilized"]["status"] != "pass":
+        reasons.append("ingested_footage_not_utilized")
+    if checks["cinematic_prompt_diversity"]["status"] != "pass":
+        reasons.append("cinematic_prompt_diversity_too_low")
 
     status = "pass"
     if is_bilibili_midform and reasons:
