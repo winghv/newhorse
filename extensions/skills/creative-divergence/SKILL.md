@@ -21,6 +21,20 @@ version: 1.0.0
 
 ## Workflow
 
+> **硬机制优先**：进入任何主观差异判断前，先跑确定性脚本生成轮换约束和真实相似度，不要让模型自报 `similarity_score` 或 `forbidden_repeats`。
+
+0. **生成轮换约束（脚本，硬约束）**
+
+   ```bash
+   # 角度设计前：从轮换库自动排除近 N 期已用装置/视觉语法/证据/开场，生成 forbidden_repeats
+   python3 extensions/skills/creative-divergence/scripts/build_divergence_contract.py \
+     --content-id <content-id> --commit
+   ```
+
+   - 产出 `planning/creative-divergence-brief.json`，其中 `rotation_plan.available` 是本期**只能从中选择**的池，`forbidden_repeats` 由脚本算出
+   - 模型只负责把选中的装置/语法/证据在 `divergence_dimensions` 五维里**具体落地**，不得选用 `exhausted` 池里的项
+   - 轮换库真源：`extensions/skills/creative-divergence/assets/rotation-pools.seed.json`（运行时副本在 `data/media-ops/_strategy/rotation-pools.json`）
+
 1. 读取最近 `3-5` 条已发布或已完成内容。
    - 优先读取 `retros/`、`publish/release-record.json`、`planning/topic-selection.json`、`angles/angle-brief.json`、`content/` 和 `review/competitive-scorecard.json`
    - 如果历史产物不足，明确写 `history_signal=incomplete`，但仍要基于可见内容做差异判断
@@ -87,6 +101,17 @@ version: 1.0.0
 - `required_changes`
 
 ## Quality Gate
+
+> **脚本化去重门禁**（替代模型自报）：竞争审校阶段先跑确定性相似度脚本，再做主观判断。
+>
+> ```bash
+> python3 extensions/skills/competitive-review/scripts/build_template_fatigue_report.py \
+>   --content-id <content-id> --register
+> ```
+>
+> - 脚本抽取当期指纹与 `_registry/creative-fingerprints.json` 近 N 期比对，算出真实 `similarity_score`、逐维度 `overlap`、`forbidden_repeat_violations`
+> - 退出码：`0=pass`、`1=revise`、`2=block`；门禁直接看退出码，不接受模型口述"不一样"
+> - `--register` 把当期指纹写回库，供下一期去重
 
 - 如果当前内容和最近内容只是在标题、措辞或案例名上变化，不算差异化。
 - 如果 `similarity_score >= 4`，竞争审校不能 `pass`。

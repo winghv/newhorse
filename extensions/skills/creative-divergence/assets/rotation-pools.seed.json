@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "description": "媒体运营跨期轮换资源池：叙事装置 / 视觉语法 / 证据类型 / 开场原型。creative-gate 从此池强制排除近 N 期已用项，确保跨期差异化。last_used_episode 为空表示从未使用。",
+  "platform": "bilibili",
+  "series_name": "现实判断力",
+  "rotation_window": 5,
+  "narrative_devices": [
+    {
+      "id": "emotional_ledger",
+      "name": "情绪账本",
+      "summary": "把每一次当下省下的情绪成本，记成未来要偿还的选择权损耗。",
+      "last_used_episode": "2026-05-23-bilibili-emotional-frugality-ep08"
+    },
+    {
+      "id": "ab_verification",
+      "name": "A/B 验证对照",
+      "summary": "用两条平行路径的真实结果对照，证明判断差异如何导致结果分叉。",
+      "last_used_episode": "2026-05-06-bilibili-decision-delay-ep07"
+    },
+    {
+      "id": "timeline_reverse",
+      "name": "时间线倒推",
+      "summary": "从一个既成结果倒推回最初那个被忽略的小决定，暴露因果链。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "first_principle_teardown",
+      "name": "第一性原理拆解",
+      "summary": "剥掉所有约定俗成的解释，从最底层机制重新推导现象为什么发生。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "counterexample_reductio",
+      "name": "反例归谬",
+      "summary": "先认真假设观众的直觉成立，再用一个极端反例把它推到荒谬。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "role_play_monologue",
+      "name": "角色扮演旁白",
+      "summary": "用第一人称代入典型当事人，让观众在他人独白里照见自己。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "data_extrapolation",
+      "name": "数据可视化推演",
+      "summary": "把一个微小日常行为按时间复利放大成可视化的长期代价。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "suspense_front_load",
+      "name": "悬念前置",
+      "summary": "开头先抛出反直觉的结论或一个未解的异常，全片回填解释。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "system_incentive_map",
+      "name": "系统激励拆解",
+      "summary": "把个人困境还原成系统如何分配注意力与回报的结构性错配。",
+      "last_used_episode": "2026-04-12-bilibili-reliable-trap-ep06"
+    },
+    {
+      "id": "before_after_self",
+      "name": "同一个人的前后对照",
+      "summary": "展示同一主角在三个月/一年窗口内，从可承受拖成不可逆。",
+      "last_used_episode": ""
+    }
+  ],
+  "visual_grammars": [
+    {
+      "id": "split_compare",
+      "name": "对比分屏",
+      "summary": "左右/上下分屏并置两种选择或两种状态，强化判断分叉。",
+      "cinematic_keywords": ["对称分屏构图", "冷暖色温对比", "中心分割线"],
+      "last_used_episode": "2026-05-06-bilibili-decision-delay-ep07"
+    },
+    {
+      "id": "macro_push",
+      "name": "特写推进",
+      "summary": "从环境缓推到关键物件特写，把抽象判断落到一个可见细节。",
+      "cinematic_keywords": ["微距特写", "浅景深焦点虚化", "缓慢推镜"],
+      "last_used_episode": ""
+    },
+    {
+      "id": "info_viz",
+      "name": "信息可视化",
+      "summary": "用账本/进度条/余额条/时间线把无形的损耗变成可读的图形。",
+      "cinematic_keywords": ["极简信息图形", "高对比度数据可视化", "动态计数"],
+      "last_used_episode": "2026-05-23-bilibili-emotional-frugality-ep08"
+    },
+    {
+      "id": "metaphor_concrete",
+      "name": "隐喻具象",
+      "summary": "把抽象概念具象成一个统一的视觉隐喻物（如沙漏、锁、岔路）。",
+      "cinematic_keywords": ["象征性静物", "戏剧性侧光", "极简背景留白"],
+      "last_used_episode": ""
+    },
+    {
+      "id": "documentary_candid",
+      "name": "纪实抓拍感",
+      "summary": "模拟真实抓拍的手持感与生活质地，降低说教感、增强代入。",
+      "cinematic_keywords": ["手持纪实感", "自然光", "浅焦人物特写", "胶片颗粒"],
+      "last_used_episode": ""
+    },
+    {
+      "id": "minimal_negative_space",
+      "name": "极简留白",
+      "summary": "大面积负空间 + 单一主体，营造冷静克制的思辨氛围。",
+      "cinematic_keywords": ["大面积负空间", "单点构图", "低饱和色调"],
+      "last_used_episode": ""
+    },
+    {
+      "id": "neon_mood",
+      "name": "霓虹氛围",
+      "summary": "都市夜景霓虹光影，营造现代焦虑与不确定感的情绪底色。",
+      "cinematic_keywords": ["霓虹光影", "青橙色调", "雨夜反光", "低调照明"],
+      "last_used_episode": ""
+    },
+    {
+      "id": "film_grain_retro",
+      "name": "胶片质感",
+      "summary": "暖调胶片颗粒与轻微漏光，给日常场景一层叙事电影感。",
+      "cinematic_keywords": ["35mm 胶片颗粒", "暖调色彩分级", "柔和漏光", "复古镜头畸变"],
+      "last_used_episode": ""
+    }
+  ],
+  "evidence_types": [
+    {
+      "id": "behavior_trace",
+      "name": "行为痕迹",
+      "summary": "未发送草稿、空白投递记录、收藏夹堆叠等可见的行为证据。",
+      "last_used_episode": "2026-05-23-bilibili-emotional-frugality-ep08"
+    },
+    {
+      "id": "comparison_artifact",
+      "name": "对比物证",
+      "summary": "offer 对比表、多标签页、方案对照等横向比较型证据。",
+      "last_used_episode": "2026-05-06-bilibili-decision-delay-ep07"
+    },
+    {
+      "id": "org_signal",
+      "name": "组织信号",
+      "summary": "可见贡献、关键节点记忆、回报错位等组织层面的证据。",
+      "last_used_episode": "2026-04-12-bilibili-reliable-trap-ep06"
+    },
+    {
+      "id": "time_cost",
+      "name": "时间复利代价",
+      "summary": "窗口关闭、机会成本、三个月/一年后的后悔等时间维度证据。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "third_party_case",
+      "name": "第三方案例",
+      "summary": "真实人物/事件/产品案例，引入外部可核查的事实锚点。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "self_report_dialogue",
+      "name": "自述对话",
+      "summary": "聊天记录、内心独白、自我合理化话术等第一人称证据。",
+      "last_used_episode": ""
+    }
+  ],
+  "opening_archetypes": [
+    {
+      "id": "result_first",
+      "name": "结果前置",
+      "summary": "前 1-3 秒先甩出反直觉结论或异常点，制造认知缺口。",
+      "last_used_episode": "2026-05-23-bilibili-emotional-frugality-ep08"
+    },
+    {
+      "id": "scene_immersion",
+      "name": "处境代入",
+      "summary": "开场直接落到观众熟悉的具体处境，先共鸣再拆解。",
+      "last_used_episode": "2026-05-06-bilibili-decision-delay-ep07"
+    },
+    {
+      "id": "question_trap",
+      "name": "提问陷阱",
+      "summary": "抛出一个观众会本能答错的问题，用答案反转勾住完播。",
+      "last_used_episode": ""
+    },
+    {
+      "id": "false_belief_callout",
+      "name": "错误信念点名",
+      "summary": "直接点名一个观众普遍相信但其实错误的信念，制造防御性好奇。",
+      "last_used_episode": "2026-04-12-bilibili-reliable-trap-ep06"
+    },
+    {
+      "id": "cold_open_anomaly",
+      "name": "冷开场异常",
+      "summary": "不解释、先呈现一个画面或数据异常，逼观众想知道为什么。",
+      "last_used_episode": ""
+    }
+  ]
+}
