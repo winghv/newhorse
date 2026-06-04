@@ -657,13 +657,36 @@ def ensure_source_video(
     auto_base_cut_plan = (project_root / "content" / "postproduction" / "auto-base-cut-plan.json").resolve()
     should_rebuild_timeline = assembly_strategy == "rebuild_timeline" and requested_source_video is None
     if assembly_strategy == "rebuild_timeline" and requested_source_video is None and auto_base_cut.exists() and auto_base_cut_plan.exists():
+        scene_asset_plan_path = project_root / "assets" / "scene-asset-plan.json"
+        scene_asset_plan = load_json(scene_asset_plan_path)
+        visual_asset_dependencies: list[Path] = []
+        for chapter in scene_asset_plan.get("chapters", []) if isinstance(scene_asset_plan.get("chapters"), list) else []:
+            if not isinstance(chapter, dict):
+                continue
+            proof_asset = chapter.get("proof_asset") if isinstance(chapter.get("proof_asset"), dict) else {}
+            proof_path = existing_path(project_root, proof_asset.get("path"))
+            if proof_path is not None:
+                visual_asset_dependencies.append(proof_path)
+            for raw_path in chapter.get("fallback_graphics", []):
+                fallback_path = existing_path(project_root, raw_path)
+                if fallback_path is not None:
+                    visual_asset_dependencies.append(fallback_path)
+            for item in chapter.get("supporting_b_roll", []):
+                if not isinstance(item, dict):
+                    continue
+                b_roll_path = existing_path(project_root, item.get("asset_path"))
+                if b_roll_path is not None:
+                    visual_asset_dependencies.append(b_roll_path)
         dependencies = [
-            project_root / "assets" / "scene-asset-plan.json",
+            scene_asset_plan_path,
+            project_root / "assets" / "generation-ledger.json",
+            project_root / "assets" / "visual-production-gate.json",
             project_root / "content" / "postproduction" / "scene-manifest.json",
             project_root / "content" / "postproduction" / "emphasis-fx-plan.json",
             project_root / "content" / "postproduction" / "audio-cue-sheet.json",
             voiceover_audio,
             subtitles,
+            *visual_asset_dependencies,
         ]
         output_mtime = auto_base_cut.stat().st_mtime
         plan_mtime = auto_base_cut_plan.stat().st_mtime
@@ -703,8 +726,9 @@ def ensure_source_video(
             "--preset",
             DEFAULT_RENDER_PRESET,
         ]
-        if visual_policy and visual_policy.get("asset_mode") == "ai-images-only":
-            command.extend(["--asset-mode", "ai-images-only", "--disable-typewriter-overlays"])
+        asset_mode = str(visual_policy.get("asset_mode") or "").strip() if visual_policy else ""
+        if asset_mode in {"ai-images-only", "ai-media-rich"}:
+            command.extend(["--asset-mode", asset_mode, "--disable-typewriter-overlays"])
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
         run_command(command)
@@ -738,8 +762,9 @@ def ensure_source_video(
             "--preset",
             DEFAULT_RENDER_PRESET,
         ]
-        if visual_policy and visual_policy.get("asset_mode") == "ai-images-only":
-            command.extend(["--asset-mode", "ai-images-only", "--disable-typewriter-overlays"])
+        asset_mode = str(visual_policy.get("asset_mode") or "").strip() if visual_policy else ""
+        if asset_mode in {"ai-images-only", "ai-media-rich"}:
+            command.extend(["--asset-mode", asset_mode, "--disable-typewriter-overlays"])
         if subtitles is not None and subtitles.exists():
             command.extend(["--subtitles", relative_to_root(subtitles, project_root)])
         run_command(command)

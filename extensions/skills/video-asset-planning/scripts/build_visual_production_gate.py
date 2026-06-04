@@ -13,6 +13,8 @@ from typing import Any
 TEXT_CARD_TYPES = {"graphics-card", "text-card", "text-only-card"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
+MIN_GENERATED_IMAGE_BYTES = 100_000
+MIN_BILIBILI_MIDFORM_GENERATED_ASSETS = 35
 
 
 def parse_args() -> argparse.Namespace:
@@ -117,11 +119,50 @@ def existing_media_count(project_root: Path, raw_paths: list[str], suffixes: set
     return count
 
 
+def media_exists(project_root: Path, raw_path: str | None, suffixes: set[str]) -> bool:
+    candidate = resolve_candidate(project_root, raw_path)
+    return bool(candidate and candidate.exists() and candidate.suffix.lower() in suffixes)
+
+
+def generated_image_quality(project_root: Path, raw_path: str | None) -> dict[str, Any]:
+    candidate = resolve_candidate(project_root, raw_path)
+    if candidate is None or not candidate.exists():
+        return {
+            "path": raw_path,
+            "status": "revise",
+            "reason": "missing_generated_asset",
+            "file_size_bytes": 0,
+        }
+    if candidate.suffix.lower() not in IMAGE_SUFFIXES:
+        return {
+            "path": relative_to_project(candidate, project_root),
+            "status": "revise",
+            "reason": "generated_asset_not_image",
+            "file_size_bytes": candidate.stat().st_size,
+        }
+    file_size = candidate.stat().st_size
+    if file_size < MIN_GENERATED_IMAGE_BYTES:
+        return {
+            "path": relative_to_project(candidate, project_root),
+            "status": "revise",
+            "reason": "generated_image_too_small_or_placeholder_like",
+            "file_size_bytes": file_size,
+            "minimum_file_size_bytes": MIN_GENERATED_IMAGE_BYTES,
+        }
+    return {
+        "path": relative_to_project(candidate, project_root),
+        "status": "pass",
+        "file_size_bytes": file_size,
+    }
+
+
 def build_gate(project_root: Path) -> dict[str, Any]:
     packet_path = detect_content_packet(project_root)
     packet = primary_packet(load_json(packet_path)) if packet_path else {}
     platforms = packet.get("platforms") if isinstance(packet.get("platforms"), list) else []
     is_bilibili_midform = "bilibili" in platforms and packet.get("deliverable_type") == "midlong-video"
+    visual_policy = packet.get("visual_policy") if isinstance(packet.get("visual_policy"), dict) else {}
+    visual_asset_mode = str(visual_policy.get("asset_mode") or "").strip()
 
     scene_plan_path = project_root / "assets" / "scene-asset-plan.json"
     generation_budget_path = project_root / "assets" / "generation-budget.json"
@@ -164,7 +205,9 @@ def build_gate(project_root: Path) -> dict[str, Any]:
                 generated_visual_paths.append(asset_path)
 
     ledger_entries = generation_ledger.get("entries") if isinstance(generation_ledger.get("entries"), list) else []
+    successful_generated_asset_paths: set[str] = set()
     delivered_generation_count = 0
+    delivered_video_generation_count = 0
     for entry in ledger_entries:
         if not isinstance(entry, dict) or str(entry.get("status") or "").lower() != "success":
             continue
@@ -173,11 +216,36 @@ def build_gate(project_root: Path) -> dict[str, Any]:
         if candidate is not None and candidate.exists() and candidate.suffix.lower() in IMAGE_SUFFIXES | VIDEO_SUFFIXES:
             delivered_generation_count += 1
             generated_visual_paths.append(asset_path)
+            successful_generated_asset_paths.add(relative_to_project(candidate, project_root))
+            if candidate.suffix.lower() in VIDEO_SUFFIXES:
+                delivered_video_generation_count += 1
 
     production_footage_count = existing_media_count(project_root, production_footage_paths, VIDEO_SUFFIXES)
     generated_visual_count = existing_media_count(project_root, generated_visual_paths, IMAGE_SUFFIXES | VIDEO_SUFFIXES)
     approved_slots = generation_budget.get("approved_generation_slots")
     approved_generation_count = len(approved_slots) if isinstance(approved_slots, list) else 0
+    generated_primary_assets = [
+        asset
+        for asset in primary_assets
+        if str(asset.get("type") or "").strip() == "generated-keyart"
+        or is_generated_visual_path(str(asset.get("path") or ""))
+    ]
+    generated_primary_paths = [str(asset.get("path") or "") for asset in generated_primary_assets]
+    generated_primary_quality = [generated_image_quality(project_root, raw_path) for raw_path in generated_primary_paths]
+    generated_primary_missing_ledger = []
+    for raw_path in generated_primary_paths:
+        candidate = resolve_candidate(project_root, raw_path)
+        if candidate is None:
+            generated_primary_missing_ledger.append(raw_path)
+            continue
+        rel_path = relative_to_project(candidate, project_root)
+        if rel_path not in successful_generated_asset_paths:
+            generated_primary_missing_ledger.append(rel_path)
+    generated_primary_quality_pass_count = sum(1 for item in generated_primary_quality if item.get("status") == "pass")
+    generated_primary_count = len(generated_primary_assets)
+    generated_primary_quality_pass_ratio = (
+        round(generated_primary_quality_pass_count / generated_primary_count, 3) if generated_primary_count else 0.0
+    )
 
     checks: dict[str, dict[str, Any]] = {
         "scene_asset_plan_present": {
@@ -198,6 +266,36 @@ def build_gate(project_root: Path) -> dict[str, Any]:
             "approved_generation_count": approved_generation_count,
             "delivered_generation_count": delivered_generation_count,
         },
+        "generated_primary_images_are_real_assets": {
+            "status": "pass"
+            if not generated_primary_count
+            or (
+                generated_primary_quality_pass_count == generated_primary_count
+                and not generated_primary_missing_ledger
+            )
+            else "revise",
+            "generated_primary_count": generated_primary_count,
+            "quality_pass_count": generated_primary_quality_pass_count,
+            "quality_pass_ratio": generated_primary_quality_pass_ratio,
+            "missing_ledger_paths": generated_primary_missing_ledger,
+            "quality": generated_primary_quality,
+        },
+        "ai_image_inventory_depth": {
+            "status": "pass"
+            if not is_bilibili_midform or delivered_generation_count >= MIN_BILIBILI_MIDFORM_GENERATED_ASSETS
+            else "revise",
+            "delivered_generation_count": delivered_generation_count,
+            "minimum_generated_assets": MIN_BILIBILI_MIDFORM_GENERATED_ASSETS,
+        },
+        "ai_video_inventory_depth": {
+            "status": "pass"
+            if not is_bilibili_midform
+            or visual_asset_mode != "ai-media-rich"
+            or delivered_video_generation_count >= 2
+            else "revise",
+            "delivered_video_generation_count": delivered_video_generation_count,
+            "minimum_generated_video_assets": 2 if visual_asset_mode == "ai-media-rich" else 0,
+        },
     }
 
     reasons: list[str] = []
@@ -209,6 +307,12 @@ def build_gate(project_root: Path) -> dict[str, Any]:
         reasons.append("production_footage_missing")
     if checks["approved_generation_delivered"]["status"] != "pass":
         reasons.append("approved_generation_not_delivered")
+    if checks["generated_primary_images_are_real_assets"]["status"] != "pass":
+        reasons.append("generated_primary_images_not_verified")
+    if checks["ai_image_inventory_depth"]["status"] != "pass":
+        reasons.append("ai_image_inventory_too_shallow")
+    if checks["ai_video_inventory_depth"]["status"] != "pass":
+        reasons.append("ai_video_inventory_too_shallow")
 
     status = "pass"
     if is_bilibili_midform and reasons:
@@ -231,6 +335,10 @@ def build_gate(project_root: Path) -> dict[str, Any]:
             "generated_visual_count": generated_visual_count,
             "approved_generation_count": approved_generation_count,
             "delivered_generation_count": delivered_generation_count,
+            "generated_primary_count": generated_primary_count,
+            "generated_primary_quality_pass_count": generated_primary_quality_pass_count,
+            "generated_primary_quality_pass_ratio": generated_primary_quality_pass_ratio,
+            "minimum_generated_asset_count": MIN_BILIBILI_MIDFORM_GENERATED_ASSETS if is_bilibili_midform else None,
         },
         "source_paths": {
             "scene_asset_plan": relative_to_project(scene_plan_path, project_root) if scene_plan_path.exists() else None,

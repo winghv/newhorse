@@ -104,9 +104,9 @@ def first_path(packet: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
-def ai_images_only_visual_policy(packet: dict[str, Any]) -> bool:
+def visual_asset_mode(packet: dict[str, Any]) -> str:
     visual_policy = packet.get("visual_policy") if isinstance(packet.get("visual_policy"), dict) else {}
-    return str(visual_policy.get("asset_mode") or "").strip() == "ai-images-only"
+    return str(visual_policy.get("asset_mode") or "").strip()
 
 
 def build_task(
@@ -198,7 +198,9 @@ def main() -> int:
     content_id = primary.get("content_id") or project_root.name
     deliverable_type = primary.get("deliverable_type") or "unknown"
     assembly_strategy = primary.get("assembly_strategy")
-    prefer_ai_images_only = ai_images_only_visual_policy(primary)
+    asset_mode = visual_asset_mode(primary)
+    prefer_ai_images_only = asset_mode == "ai-images-only"
+    prefer_ai_media_rich = asset_mode == "ai-media-rich"
     voiceover_status = (primary.get("voiceover_assets") or {}).get("status") or "unknown"
 
     graphics_dir = project_root / "assets" / "graphics"
@@ -559,6 +561,8 @@ def main() -> int:
     notes.append("自治模式下，人工录屏只允许作为 fallback，不应再作为 Production Sprint Phase 1 的默认动作。")
     if prefer_ai_images_only:
         notes.append("本包使用 ai-images-only 视觉策略：主画面资产只允许 AI 图片，外部素材、图卡和 AI 视频都不是默认时间线输入。")
+    elif prefer_ai_media_rich:
+        notes.append("本包使用 ai-media-rich 视觉策略：主画面资产以 AI 图片和 AI 视频为主，不依赖 stock-library B-roll 或全屏文字卡。")
     else:
         notes.append("B-roll、图卡导出、后期装配三条链都已有本地 skill 或脚本入口，应先跑自动入口，再看是否需要人工干预。")
 
@@ -603,7 +607,7 @@ def main() -> int:
             "final_cut_count": len(final_cut_paths),
             "auto_base_cut_exists": auto_base_cut_path.exists(),
             "auto_base_quality_status": auto_base_plan.get("quality", {}).get("status"),
-            "visual_asset_mode": "ai-images-only" if prefer_ai_images_only else "default",
+            "visual_asset_mode": asset_mode or "default",
         },
         "tasks": tasks,
         "notes": notes,

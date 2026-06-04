@@ -23,6 +23,10 @@ MAX_IMAGE_SLOT_DURATION_SECONDS = 8.0
 MAX_AVERAGE_SLOT_DURATION_SECONDS = 6.5
 DISALLOWED_PLAIN_CARD_TYPES = {"graphics-card", "text-card", "text-only-card"}
 IMAGE_MOTION_OVERSAMPLE_FACTOR = 2
+EXCLUDED_VISUAL_PATH_TOKENS = ("/archive", "archive-", "placeholder-archive", "/placeholder", "contact-sheet")
+AI_IMAGES_ONLY_MIN_UNIQUE_ASSETS = 35
+AI_IMAGES_ONLY_MAX_REUSE_PER_ASSET = 4
+AI_MEDIA_RICH_MIN_UNIQUE_VIDEO_ASSETS = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,9 +62,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preset", default="medium", help="Output encoding preset.")
     parser.add_argument(
         "--asset-mode",
-        choices=["default", "ai-images-only"],
+        choices=["default", "ai-images-only", "ai-media-rich"],
         default="default",
-        help="Visual asset source policy. ai-images-only excludes external footage, generated videos, graphics, and text cards.",
+        help="Visual asset source policy. ai-images-only excludes external footage, generated videos, graphics, and text cards. ai-media-rich uses AI images plus generated videos only.",
     )
     parser.add_argument(
         "--disable-typewriter-overlays",
@@ -136,6 +140,11 @@ def expand_visual_variant_family(project_root: Path, candidate: Path) -> list[Pa
         if item.is_file()
     )
     return siblings or [resolved]
+
+
+def is_excluded_visual_asset_path(path: Path) -> bool:
+    normalized = path.as_posix().lower()
+    return any(token in normalized for token in EXCLUDED_VISUAL_PATH_TOKENS)
 
 
 def relative_to_project(path: Path, project_root: Path) -> str:
@@ -488,6 +497,7 @@ def load_generation_video_assets(project_root: Path) -> list[dict[str, Any]]:
                 "tags": ["ai-generated", str(item.get("generation_type") or "").strip()],
                 "query": str(item.get("reason") or ""),
                 "preview_image_url": "",
+                "max_repeat_uses": 2,
             }
         )
     return assets
@@ -636,6 +646,8 @@ def collect_ai_image_assets(project_root: Path) -> list[dict[str, Any]]:
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in IMAGE_SUFFIXES:
                 continue
+            if is_excluded_visual_asset_path(path):
+                continue
             resolved = path.resolve()
             if resolved in seen:
                 continue
@@ -652,10 +664,22 @@ def collect_ai_image_assets(project_root: Path) -> list[dict[str, Any]]:
                     "order": parse_card_order(path),
                     "role": "keyart",
                     "source": "ai-images-only",
-                    "max_repeat_uses": None,
+                    "max_repeat_uses": 3,
                 }
             )
     return sorted(assets, key=lambda item: (item.get("chapter_id") or "zz", item["path"].name))
+
+
+def collect_ai_media_assets(project_root: Path) -> list[dict[str, Any]]:
+    """Collect AI-generated images and generated videos for a richer visual pass."""
+    proof_assets = collect_ai_image_assets(project_root)
+    video_assets = load_generation_video_assets(project_root)
+    return interleave_assets(
+        cover_asset=None,
+        proof_assets=proof_assets,
+        graphic_assets=[],
+        video_assets=video_assets,
+    )
 
 
 def collect_video_assets(project_root: Path) -> list[dict[str, Any]]:
@@ -2303,6 +2327,12 @@ def build_ai_images_only_quality_report(sequence: list[dict[str, Any]]) -> dict[
     typewriter_slots = [item for item in sequence if str(item.get("typewriter_text") or "").strip()]
     average_slot_duration = (sum(float(item["slot_duration"]) for item in sequence) / slot_count) if slot_count else 0.0
     max_image_slot_duration = max((float(item["slot_duration"]) for item in image_slots), default=0.0)
+    asset_paths = [str(item.get("asset_path") or "") for item in image_slots if str(item.get("asset_path") or "")]
+    unique_asset_count = len(set(asset_paths))
+    asset_reuse_counts: dict[str, int] = {}
+    for asset_path in asset_paths:
+        asset_reuse_counts[asset_path] = asset_reuse_counts.get(asset_path, 0) + 1
+    max_asset_reuse_count = max(asset_reuse_counts.values(), default=0)
     status = "pass"
     warnings: list[str] = []
     if slot_count and len(image_slots) != slot_count:
@@ -2314,6 +2344,12 @@ def build_ai_images_only_quality_report(sequence: list[dict[str, Any]]) -> dict[
     if typewriter_slots:
         status = "revise"
         warnings.append("typewriter_overlay_present")
+    if unique_asset_count < AI_IMAGES_ONLY_MIN_UNIQUE_ASSETS:
+        status = "revise"
+        warnings.append("ai_image_inventory_too_shallow")
+    if max_asset_reuse_count > AI_IMAGES_ONLY_MAX_REUSE_PER_ASSET:
+        status = "revise"
+        warnings.append("single_ai_image_reused_too_often")
     if max_image_slot_duration > MAX_IMAGE_SLOT_DURATION_SECONDS:
         warnings.append("image_hold_too_long")
     if average_slot_duration > MAX_AVERAGE_SLOT_DURATION_SECONDS:
@@ -2325,16 +2361,68 @@ def build_ai_images_only_quality_report(sequence: list[dict[str, Any]]) -> dict[
             "image_slot_count": len(image_slots),
             "ai_image_slot_count": len(ai_image_slots),
             "typewriter_overlay_slot_count": len(typewriter_slots),
+            "unique_ai_image_asset_count": unique_asset_count,
+            "max_asset_reuse_count": max_asset_reuse_count,
             "average_slot_duration_seconds": round(average_slot_duration, 3),
             "max_image_slot_duration_seconds": round(max_image_slot_duration, 3),
         },
         "thresholds": {
             "max_image_slot_duration_seconds": MAX_IMAGE_SLOT_DURATION_SECONDS,
             "max_average_slot_duration_seconds": MAX_AVERAGE_SLOT_DURATION_SECONDS,
+            "minimum_unique_ai_image_assets": AI_IMAGES_ONLY_MIN_UNIQUE_ASSETS,
+            "maximum_reuse_per_ai_image_asset": AI_IMAGES_ONLY_MAX_REUSE_PER_ASSET,
         },
         "warnings": warnings,
         "asset_mode": "ai-images-only",
     }
+
+
+def build_ai_media_rich_quality_report(sequence: list[dict[str, Any]]) -> dict[str, Any]:
+    slot_count = len(sequence)
+    image_slots = [item for item in sequence if item["asset_type"] == "image"]
+    video_slots = [item for item in sequence if item["asset_type"] == "video"]
+    average_slot_duration = (sum(float(item["slot_duration"]) for item in sequence) / slot_count) if slot_count else 0.0
+    max_image_slot_duration = max((float(item["slot_duration"]) for item in image_slots), default=0.0)
+    video_asset_paths = [str(item.get("asset_path") or "") for item in video_slots if str(item.get("asset_path") or "")]
+    unique_video_asset_count = len(set(video_asset_paths))
+    generated_video_asset_paths = {
+        path for item, path in zip(video_slots, video_asset_paths) if str(item.get("asset_source") or "") == "generation-ledger"
+    }
+    status = "pass"
+    warnings: list[str] = []
+    if slot_count and not video_slots:
+        warnings.append("generated_video_slots_missing")
+        status = "revise"
+    if unique_video_asset_count < AI_MEDIA_RICH_MIN_UNIQUE_VIDEO_ASSETS:
+        warnings.append("generated_video_inventory_too_shallow")
+        status = "revise"
+    if max_image_slot_duration > MAX_IMAGE_SLOT_DURATION_SECONDS:
+        warnings.append("image_hold_too_long")
+        status = "revise"
+    if average_slot_duration > MAX_AVERAGE_SLOT_DURATION_SECONDS:
+        warnings.append("average_slot_too_long")
+        status = "revise"
+
+    report = {
+        "status": status,
+        "metrics": {
+            "slot_count": slot_count,
+            "image_slot_count": len(image_slots),
+            "video_slot_count": len(video_slots),
+            "generated_video_slot_count": sum(1 for item in video_slots if str(item.get("asset_source") or "") == "generation-ledger"),
+            "unique_generated_video_asset_count": len(generated_video_asset_paths),
+            "average_slot_duration_seconds": round(average_slot_duration, 3),
+            "max_image_slot_duration_seconds": round(max_image_slot_duration, 3),
+        },
+        "thresholds": {
+            "max_image_slot_duration_seconds": MAX_IMAGE_SLOT_DURATION_SECONDS,
+            "max_average_slot_duration_seconds": MAX_AVERAGE_SLOT_DURATION_SECONDS,
+            "minimum_unique_generated_video_assets": AI_MEDIA_RICH_MIN_UNIQUE_VIDEO_ASSETS,
+        },
+        "warnings": warnings,
+    }
+    report["asset_mode"] = "ai-media-rich"
+    return report
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -2363,6 +2451,12 @@ def main() -> int:
         graphic_assets = []
         video_assets = []
         assets = proof_assets
+    elif args.asset_mode == "ai-media-rich":
+        cover_asset = None
+        assets = collect_ai_media_assets(project_root)
+        proof_assets = [asset for asset in assets if asset["type"] == "image"]
+        graphic_assets = []
+        video_assets = [asset for asset in assets if asset["type"] == "video"]
     else:
         cover_asset = collect_cover_asset(project_root)
         proof_assets = collect_proof_assets(project_root)
@@ -2409,6 +2503,8 @@ def main() -> int:
     quality = (
         build_ai_images_only_quality_report(sequence)
         if args.asset_mode == "ai-images-only"
+        else build_ai_media_rich_quality_report(sequence)
+        if args.asset_mode == "ai-media-rich"
         else build_quality_report(sequence, proof_assets_available=bool(proof_assets))
     )
     render_sequence(

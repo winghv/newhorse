@@ -133,7 +133,6 @@ def build_queries(topic: str, core_angle: str, proof_plan: list[str]) -> list[di
                 "找平台原生表达和标题承诺方式。",
                 "找观众真实措辞、反对意见和评论区问题。",
             ],
-            strict=True,
         )
     ]
 
