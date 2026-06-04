@@ -35,6 +35,22 @@
 
 无论哪种模式，评分卡、审核状态、发布门禁和渲染记录都不能省略。
 
+## Gate Model（权威门禁模型）
+
+整条链路只有 **3 个会阻塞推进的真门禁**。本文档后续各阶段提到的所有 `*-report.json` / `*-scorecard.json` / `*-gate.json` 都是这 3 个门禁的**内部子检查**，不再各自独立阻塞流程。这是为了避免"门禁臃肿、流程卡死"，把治理收敛到 3 个清晰节点。
+
+| 门禁 | 位置 | 聚合的子检查 | 阻塞条件 | 入口脚本 |
+|------|------|------------|----------|----------|
+| **creative-gate** | 角度 → 生产之间 | template-fatigue-report、creative-divergence-brief | `build_template_fatigue_report.py` 退出码=2，或缺 divergence 契约 | `competitive-review/scripts/build_template_fatigue_report.py`、`creative-divergence/scripts/build_divergence_contract.py` |
+| **assembly-qa-gate** | 生产 → 竞争审校之间 | assembly-qa-report、subtitle-quality-report、visual-diversity-report、visual-production-gate、scene-assembly-report | 任一子检查未 pass | `video-asset-planning/scripts/build_visual_production_gate.py` |
+| **publish-gate** | 发布前 | competitive-scorecard、review-gate(合规)、workflow-quality-gate、auto-base-cut quality | 竞争审校未 pass / 合规未 pass / quality gate=revise·block / rebuild_timeline 缺 auto-base-cut-plan | `media-ops-orchestration/scripts/build_workflow_quality_gate.py` |
+
+门禁三原则：
+
+1. **能算的不靠自报**：相似度、覆盖率、prompt 多样性、文件真实性一律脚本算，门禁读退出码，不接受模型口述"没问题"。
+2. **反同质化是硬机制**：creative-gate 的 forbidden_repeats 由 `build_divergence_contract.py` 从轮换库自动算出（排除近 N 期已用装置/视觉语法/证据/开场），模型只在"available 池"内发挥。
+3. **autonomous-team 不因缺人工 checkpoint 而停**：supervisor-led 可加人工检查，但不得成为 autonomous 默认阻塞条件。
+
 ### Supervisor-Led Delegation Rules
 
 `supervisor-led` 的设计目标不是“主控自己完成全部内容”，而是“主控像导演和制片一样拆阶段、写 brief、做 gate、整合 specialist 结果”。
@@ -162,6 +178,13 @@ specialist 返回后，主控必须明确：
   - `angles/attention-structure-template.json`
   - `angles/follow-conversion-hooks.json`
 - 对解释型中长视频，还要输出 `cognitive punch gate`
+
+**creative-gate（进入 Script/Production 前必过）**：
+
+1. 先跑 `build_divergence_contract.py --content-id <id> --commit`：从轮换库自动排除近 N 期已用的叙事装置/视觉语法/证据类型/开场原型，产出 `planning/creative-divergence-brief.json`，其中 `rotation_plan.available` 是本期**只能从中选择**的池。
+2. 角度与脚本必须落在 available 池内；选用 `exhausted` 项即违规。
+3. 进入竞争审校时跑 `build_template_fatigue_report.py --content-id <id> --register`，由脚本算真实 `similarity_score`；退出码=2（block）不得进入生产。
+4. 轮换库真源：`extensions/skills/creative-divergence/assets/rotation-pools.seed.json`。
 
 ### 4.5. Script Development
 
@@ -302,6 +325,8 @@ specialist 返回后，主控必须明确：
 自动化优先规则：
 
 - 解释型 / 认知类中长视频默认先走 `ai-images-only`：每章批量生成足量无字 16:9 AI 图，再由 `build_visual_timeline.py --asset-mode ai-images-only --disable-typewriter-overlays` 生成基础时间线
+- **电影质感是硬要求**：AI 图 prompt 不得让模型裸写，必须经 `build_minimax_shot_plan.py` 注入电影语言（镜头景别 / 光影 / 构图 / 景深 / 色彩 / 镜头 / 氛围）。同期镜头要有变化梯度（`diversity.unique_shot_types >= 4`、`unique_lighting >= 4`），同章可统一色调保持连贯。词库见 `video-asset-planning/scripts/cinematic_prompt_lib.py`。
+- **转场与运镜不得单调**：转场走 `build_transition_plan.py` 的转场库按场景类别轮换；运镜走 `build_scene_manifest.py` 的 Ken Burns / pan / tilt / parallax 轮换，不再整片只有 `ken_burns_push`。两者都可依本期 `visual_grammar` 偏好微调。
 - `B-roll` 只在内容需要真实地点、真实产品、真实事件或实操演示时默认启用；启用时走 `licensed-footage-sourcing` runner，不靠人工逐段找素材
 - 对标研究里如果已经拿到参考视频 URL / BV 号，默认先走 `reference-video-ingest`，优先沉淀现成字幕，不再靠手工反复回看摘抄
 - `licensed-footage-sourcing` 对中视频默认同时产出 production shortlist 和 exploration shortlist；后者用于放大 B-roll 候选池，不直接替代 production manifest

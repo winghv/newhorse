@@ -171,6 +171,19 @@ def main() -> int:
     }
 
     output_path = (project_root / args.output).resolve()
+    # 保留模型已填好的 divergence_dimensions / new_thinking_path，绝不覆盖已有内容。
+    existing = load_json(output_path)
+    existing_dims = existing.get("divergence_dimensions") if isinstance(existing.get("divergence_dimensions"), dict) else {}
+    preserved_dims = {
+        dim: str(existing_dims.get(dim) or "")
+        for dim in ("user_task", "evidence_type", "narrative_device", "visual_language", "interaction_trigger")
+    }
+    if any(preserved_dims.values()):
+        brief["divergence_dimensions"] = preserved_dims
+    for carry in ("new_thinking_path", "current_topic"):
+        if existing.get(carry):
+            brief[carry] = existing[carry]
+
     write_json(output_path, brief)
 
     if args.commit and recommended_ids:
